@@ -93,6 +93,8 @@
         seen: wallNow(),      // latest wall-clock time this realm has observed
         debt: 0,              // seconds of away time forfeited after the clock ran backwards
         marks: 0,             // times the save failed its seal or its audit
+        exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
+        remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
         opts: { sci: false, motion: true, buy: 1 },
         tab: 'den'
       };
@@ -162,6 +164,8 @@
       s.seen = num(o, 'seen', 0, BIG, num(o, 'last', 0, now, now));   // `last` is the v1 field
       s.debt = num(o, 'debt', 0, 86400, 0);
       s.marks = int(o, 'marks', 0, 1e6, 0);
+      s.exportedAt = num(o, 'exportedAt', 0, now, 0);
+      s.remindedAt = num(o, 'remindedAt', 0, now, 0);
       s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
@@ -303,9 +307,92 @@
 
     var halted = false, saveWarned = false;
 
+    /* ---------- backups ----------
+       Three extra sealed copies, each written inside its own try so that a full disk can never stop
+       the main save. daily: the last save of the previous local day. unlight: the realm just before an
+       Unlighting. import: the realm just before an import, a restore or an erase replaced it. */
+    var BAK = { daily: KEY + '.bak.daily', unlight: KEY + '.bak.unlight', 'import': KEY + '.bak.import' };
+    var BAK_SLOTS = ['daily', 'unlight', 'import'];
+    var SET_ASIDE = { rejected: KEY + '.rejected', unreadable: KEY + '.unreadable' };
+
+    function writeBackup(slot, text) { try { store.set(BAK[slot], text); } catch (e) {} }
+    function dayOf(ms) { var d = new Date(ms); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+    var backupDay = 0;        // the local day the daily slot was last rotated for
+
+    function rotateDaily() {
+      var today = dayOf(wallNow());
+      if (today === backupDay) return;
+      var prev = null;
+      try { prev = store.get(KEY); } catch (e) {}
+      if (prev) writeBackup('daily', prev);
+      backupDay = today;
+    }
+
+    var bakMemo = {};
+    function backupInfo(slot) {
+      var raw = null;
+      try { raw = store.get(BAK[slot]); } catch (e) {}
+      if (!raw) return null;
+      if (bakMemo[slot] && bakMemo[slot].raw === raw) return bakMemo[slot].info;
+      var info = null;
+      try {
+        var u = unpack(raw);
+        if (u.sealed) { var t = adopt(u.data); info = { slot: slot, savedAt: t.seen, fathom: t.unlightings + 1, gloom: t.totalGloom, played: t.played }; }
+      } catch (e) {}
+      bakMemo[slot] = { raw: raw, info: info };
+      return info;
+    }
+    /* The backups that exist and are sealed, read into temporary states (never into S). */
+    function listBackups() {
+      var out = [];
+      BAK_SLOTS.forEach(function (slot) { var i = backupInfo(slot); if (i) out.push(i); });
+      return out;
+    }
+
+    /* Puts a backup in place of the realm. The realm it replaces goes to the import slot first. */
+    function restoreBackup(slot) {
+      var raw = null, u;
+      try { raw = BAK[slot] ? store.get(BAK[slot]) : null; } catch (e) {}
+      if (!raw) return { ok: false, error: 'There is no such backup.' };
+      try { u = unpack(raw); } catch (e) { return { ok: false, error: 'That backup could not be read.' }; }
+      if (!u.sealed) return { ok: false, error: 'That backup has been altered. The Scribes refuse it.' };
+      writeBackup('import', pack());
+      S = adopt(u.data);
+      pruneOmens();
+      recalc();
+      backupDay = dayOf(wallNow());
+      if (!save()) return { ok: false, error: 'This browser refused to store the save.' };
+      return { ok: true };
+    }
+
+    /* Copies set aside because they failed their seal or could not be read. They can be exported or
+       discarded, never restored. */
+    function listSetAside() {
+      var out = [];
+      Object.keys(SET_ASIDE).forEach(function (k) {
+        var raw = null;
+        try { raw = store.get(SET_ASIDE[k]); } catch (e) {}
+        if (raw) out.push({ which: k, text: raw });
+      });
+      return out;
+    }
+    function discardSetAside(which) { if (SET_ASIDE[which]) { try { store.remove(SET_ASIDE[which]); } catch (e) {} } }
+
+    /* ---------- keeping a copy ---------- */
+    var REMIND_PLAYED = 7200, STALE_EXPORT_MS = 14 * 86400000, REMIND_EVERY_MS = 7 * 86400000;
+    /* True when the realm lives only in this browser and has not been exported lately. */
+    function backupStale(played, installed, exportedAt, now) {
+      return played > REMIND_PLAYED && !installed && (!exportedAt || now - exportedAt > STALE_EXPORT_MS);
+    }
+    function reminderDue(played, installed, exportedAt, remindedAt, now) {
+      return backupStale(played, installed, exportedAt, now) && (!remindedAt || now - remindedAt > REMIND_EVERY_MS);
+    }
+    function markExported() { S.exportedAt = wallNow(); }
+    function markReminded() { S.remindedAt = wallNow(); }
+
     function save() {
       if (halted) return false;
-      try { store.set(KEY, pack()); return true; }
+      try { rotateDaily(); store.set(KEY, pack()); return true; }
       catch (e) {
         if (!saveWarned) { saveWarned = true; say('This browser is refusing to store the save. Export it from the Realm tab to keep your progress.'); }
         return false;
@@ -351,6 +438,7 @@
       }
       pruneOmens();
       recalc();
+      backupDay = dayOf(S.seen);
       return { note: note };
     }
 
@@ -370,14 +458,17 @@
       var u;
       try { u = unpack(str); } catch (e) { return { ok: false, error: 'That text is not a Dark Realm save.' }; }
       if (!u.sealed) return { ok: false, error: 'That save has been altered since it was exported. The Scribes refuse it.' };
+      writeBackup('import', pack());
       S = adopt(u.data);
       pruneOmens();
       recalc();
+      backupDay = dayOf(wallNow());
       if (!save()) return { ok: false, error: 'This browser refused to store the save.' };
       return { ok: true };
     }
 
     function erase() {
+      if (S) writeBackup('import', pack());
       try { store.remove(KEY); store.remove(OLD_KEY); } catch (e) {}
     }
 
@@ -681,6 +772,7 @@
     function unlight() {
       var g = glassGain();
       if (g < 1) return false;
+      writeBackup('unlight', pack());
       S.glass += g; S.glassTotal += g; S.unlightings++;
       S.gloom = 0; S.runGloom = 0; S.echoes = 0; S.runEchoes = 0;
       S.den = {}; S.upg = {};
@@ -949,7 +1041,7 @@
     /* ---------- the engine ---------- */
 
     var engine = {
-      KEY: KEY, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, MARCH: MARCH,
+      KEY: KEY, MAX_SAVE: MAX_SAVE, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, MARCH: MARCH,
       C: C, UPGS: UPGS, OMENS: OMENS, dirty: dirty,
       // time
       start: start, tick: tick, step: step, away: away, slowChecks: slowChecks, recalc: recalc, fight: fight,
@@ -958,6 +1050,8 @@
       setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
       // save
       load: load, save: save, exportText: exportText, importText: importText, erase: erase,
+      listBackups: listBackups, restoreBackup: restoreBackup, listSetAside: listSetAside, discardSetAside: discardSetAside,
+      backupStale: backupStale, reminderDue: reminderDue, markExported: markExported, markReminded: markReminded,
       halt: function () { halted = true; }, storageAction: storageAction,
       // reads
       cnt: cnt, rl: rl, perk: perk, totalDenizens: totalDenizens, totalRites: totalRites,

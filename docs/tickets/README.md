@@ -22,7 +22,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | [x] | [TDR-010](TDR-010-dom-sinks-trusted-types-headers.md) Remove HTML sinks, Trusted Types, headers | M | none |
 | [x] | [TDR-011](TDR-011-save-integrity-gaps.md) Save and input integrity gaps | S | 001 |
 | [x] | [TDR-012](TDR-012-service-worker-atomic-updates.md) Service worker, atomic versions, update prompt | M | 002 |
-| [ ] | [TDR-013](TDR-013-save-durability-and-backups.md) Backups, file export, durability | M | 001, 010 |
+| [x] | [TDR-013](TDR-013-save-durability-and-backups.md) Backups, file export, durability | M | 001, 010 |
 
 ### Mechanics
 
@@ -130,3 +130,6 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-012: tested in Chromium end to end (`tests/e2e/update.spec.js`): the new version waits, the Realm tab offers it, applying reloads onto it, and the offline reload still loads. The update prompt is a Whisper plus a button and a dot on the Realm tab, because the toast layer (TDR-051) has not landed. Replace it when TDR-051 lands.
 - TDR-012: a navigation to an unlisted path (for example `/nothing`) is no longer answered with the game page when offline. Only `/` and `/index.html` map to `./`. The 404 page is therefore not available offline either.
 - TDR-012: the stamp covers every file in `FILES` except `js/version.js`, which holds it. `sw.js` itself is not hashed (the browser compares it byte for byte already), so a change to `sw.js` alone does not change `CACHE`.
+- TDR-013: verified in Chromium (`tests/e2e/backup.spec.js`): download under the header CSP, import from a file, restore. Not checked: Safari and iOS Safari downloads, Android Chrome, and the `file://` meta CSP path. Check the download by hand on iOS before relying on it.
+- TDR-013: Erase leaves one sealed backup (the import slot) so an erase can be undone. The Erase dialog says so. A player who wants every trace gone must also Discard it, which today means restoring or overwriting the slot; there is no "discard backup" button for sealed slots. Owner decision: add one, or accept.
+- TDR-013: the daily slot is chosen from the local calendar day of the last observed time, so a device in a different timezone on its next visit can rotate a day early or late. It is harmless.

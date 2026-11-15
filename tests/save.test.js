@@ -174,10 +174,11 @@ test('a v1 save is adopted and the old key removed', () => {
   assert.equal(f.map.has('thedarkrealm.save.v1'), false);
 });
 
-test('erase removes both keys', () => {
+test('erase removes both live keys and keeps one sealed backup of the realm it erased', () => {
   const f = fresh();
   f.e.save();
   f.map.set('thedarkrealm.save.v1', 'old');
   f.e.erase();
-  assert.equal(f.map.size, 0);
+  assert.deepEqual([...f.map.keys()], ['thedarkrealm.save.v2.bak.import']);
+  assert.equal(f.e.unpack(f.map.get('thedarkrealm.save.v2.bak.import')).sealed, true);
 });

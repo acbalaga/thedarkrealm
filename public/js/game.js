@@ -442,6 +442,28 @@
   }
 
   /* Realm (stats and settings) */
+  function isInstalled() {
+    try { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; } catch (e) { return false; }
+  }
+  function isIos() {
+    return /iP(hone|ad|od)/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function canDownload() {
+    return !!(window.Blob && window.URL && URL.createObjectURL && 'download' in document.createElement('a'));
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function downloadSave(text) {
+    var d = new Date();
+    var name = 'dark-realm-fathom-' + (S.unlightings + 1) + '-' + d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + '.tdr.txt';
+    try {
+      var url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      var a = h('a', { href: url, download: name, hidden: true });
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      engine.markExported();
+    } catch (e) { say('This browser refused to make the file. Copy the text instead.'); }
+  }
+
   function buildSettings(page) {
     page.appendChild(el('h3', 'sub-head', 'The realm so far'));
     var stats = el('dl', 'stats');
@@ -473,20 +495,32 @@
     mk('Export save', function () {
       var ta = h('textarea', { id: 'io', readOnly: true, rows: 6 });
       ta.value = engine.exportText();
-      modal('Export save', [h('p', null, 'Copy this text and keep it somewhere safe.'), ta],
-        [{ label: 'Copy', cb: function () {
-          var t = ta; t.select();
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).catch(function () {});
-            else document.execCommand('copy');
-          } catch (e) {}
-          return false;
-        } },
-          { label: 'Done', primary: true }]);
+      var btns = [{ label: 'Copy', cb: function () {
+        var t = ta; t.select();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).catch(function () {});
+          else document.execCommand('copy');
+          engine.markExported();
+        } catch (e) {}
+        return false;
+      } }];
+      if (canDownload()) btns.push({ label: 'Download file', cb: function () { downloadSave(ta.value); return false; } });
+      btns.push({ label: 'Done', primary: true });
+      modal('Export save', [h('p', null, 'Copy this text, or download it as a file, and keep it somewhere safe.'), ta], btns);
     });
     mk('Import save', function () {
       var ta = h('textarea', { id: 'io', rows: 6 }), err = h('p', { id: 'io-err', className: 'warn' });
-      modal('Import save', [h('p', null, 'Paste an exported save. It replaces the current realm.'), ta, err],
+      var file = h('input', { type: 'file', accept: '.txt,.tdr.txt,text/plain' });
+      file.onchange = function () {
+        var f = file.files && file.files[0];
+        if (!f) return;
+        if (f.size > engine.MAX_SAVE) { err.textContent = 'That file is too large to be a save.'; return; }
+        var fr = new FileReader();
+        fr.onload = function () { ta.value = String(fr.result); err.textContent = 'File read. Press Import to use it.'; };
+        fr.onerror = function () { err.textContent = 'That file could not be read.'; };
+        fr.readAsText(f);
+      };
+      modal('Import save', [h('p', null, 'Paste an exported save, or choose the file. It replaces the current realm, which is kept under Backups.'), ta, file, err],
         [{ label: 'Cancel' }, { label: 'Import', primary: true, cb: function () {
           var r = engine.importText(ta.value);
           S = engine.S;
@@ -496,7 +530,7 @@
         } }]);
     });
     mk('Erase everything', function () {
-      modal('Erase the realm?', h('p', null, 'This deletes all progress, including Nightglass, omens and the codex. It cannot be undone.'),
+      modal('Erase the realm?', h('p', null, 'This deletes all progress, including Nightglass, omens and the codex. One sealed backup is kept under Backups until you discard it.'),
         [{ label: 'Keep it', primary: true }, { label: 'Erase', danger: true, cb: function () {
           wiping = true;
           engine.erase();
@@ -504,6 +538,69 @@
         } }]);
     }, 'danger');
     page.appendChild(row);
+
+    var notice = el('p', 'dim small');
+    page.appendChild(notice);
+    var storageLine = el('p', 'dim small', 'Storage: checking');
+    page.appendChild(storageLine);
+    try {
+      if (navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(function (ok) {
+        storageLine.textContent = ok ? 'Storage: persistent' : 'Storage: may be cleared by the browser';
+      }).catch(function () { storageLine.textContent = ''; });
+      else storageLine.textContent = '';
+    } catch (e) { storageLine.textContent = ''; }
+
+    page.appendChild(el('h3', 'sub-head', 'Backups'));
+    var bakBox = el('div', 'backups');
+    page.appendChild(bakBox);
+    var bakSig = null, bakAges = [];
+    var SLOT_LABELS = { daily: 'The last save of the previous day', unlight: 'Before the last Unlighting', 'import': 'Before the last import, restore or erase' };
+    var ASIDE_LABELS = { rejected: 'Set aside: failed its seal', unreadable: 'Set aside: could not be read' };
+    function refreshBackups() {
+      var list = engine.listBackups(), aside = engine.listSetAside(), now = wallNow();
+      var sig = list.map(function (b) { return b.slot + ':' + b.savedAt; }).join('|') + '#' + aside.map(function (a) { return a.which + a.text.length; }).join('|');
+      if (sig !== bakSig) {
+        bakSig = sig; bakAges = [];
+        bakBox.replaceChildren();
+        if (!list.length && !aside.length) bakBox.appendChild(el('p', 'dim small', 'No backups yet. One is made each day, before each Unlighting, and before an import or erase.'));
+        list.forEach(function (b) {
+          var age = el('span', 'dim small');
+          bakAges.push({ node: age, at: b.savedAt });
+          var r = el('div', 'btn-row');
+          r.appendChild(h('span', null, [SLOT_LABELS[b.slot], ' · Fathom ' + b.fathom + ' · ' + fmt(b.gloom) + ' Gloom · ', age]));
+          var btn = el('button', 'btn', 'Restore'); btn.type = 'button';
+          btn.onclick = function () {
+            modal('Restore this backup?', h('p', null, 'The realm you have now is kept under "Before the last import, restore or erase". Nothing is lost.'),
+              [{ label: 'Cancel' }, { label: 'Restore', primary: true, cb: function () {
+                var res = engine.restoreBackup(b.slot);
+                S = engine.S;
+                if (!res.ok) { say(res.error); return; }
+                wiping = true;
+                location.reload();
+              } }]);
+          };
+          r.appendChild(btn);
+          bakBox.appendChild(r);
+        });
+        aside.forEach(function (a) {
+          var r = el('div', 'btn-row');
+          r.appendChild(el('span', null, ASIDE_LABELS[a.which]));
+          var ex = el('button', 'btn', 'Export'); ex.type = 'button';
+          ex.onclick = function () {
+            var t = h('textarea', { readOnly: true, rows: 6 }); t.value = a.text;
+            modal('Set-aside copy', [h('p', null, 'This copy is not played and cannot be restored. Keep the text if you want to look at it.'), t], [{ label: 'Done', primary: true }]);
+          };
+          var dc = el('button', 'btn danger', 'Discard'); dc.type = 'button';
+          dc.onclick = function () {
+            modal('Discard this copy?', h('p', null, 'It is deleted from this browser.'),
+              [{ label: 'Keep it', primary: true }, { label: 'Discard', danger: true, cb: function () { engine.discardSetAside(a.which); refreshBackups(); } }]);
+          };
+          r.appendChild(ex); r.appendChild(dc);
+          bakBox.appendChild(r);
+        });
+      }
+      bakAges.forEach(function (x) { x.node.textContent = fmtTime(Math.max(0, (now - x.at) / 1000)) + ' ago'; });
+    }
 
     page.appendChild(el('h3', 'sub-head', 'Display'));
     var o1 = el('label', 'check'); var c1 = document.createElement('input'); c1.type = 'checkbox';
@@ -526,6 +623,11 @@
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
       c1.checked = S.opts.sci; c2.checked = S.opts.motion;
       upBtn.hidden = !waitingWorker;
+      refreshBackups();
+      var stale = engine.backupStale(S.played, isInstalled(), S.exportedAt, wallNow());
+      notice.hidden = !stale;
+      if (stale) notice.textContent = 'This realm lives only in this browser, and browsers clear unused sites. Export a copy.' +
+        (isIos() ? ' Adding the game to the Home Screen keeps the save for longer.' : '');
     };
   }
 
@@ -716,6 +818,15 @@
     engine.start();
     frame();
     setInterval(frame, 100);
+    function checkReminder() {
+      if (engine.halted) return;
+      if (engine.reminderDue(S.played, isInstalled(), S.exportedAt, S.remindedAt, wallNow())) {
+        say('This realm lives only in this browser. Browsers clear unused sites. Export a copy from Keeping.');
+        engine.markReminded();
+      }
+    }
+    checkReminder();
+    setInterval(checkReminder, 60000);
     function keep() { if (!wiping) engine.save(); }
     window.addEventListener('beforeunload', keep);
     window.addEventListener('pagehide', keep);            // the reliable one on phones and Home Screen apps

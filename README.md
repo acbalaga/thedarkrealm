@@ -18,6 +18,10 @@ Installing as an app needs the game served over https (a browser rule, not a gam
 
 After the first visit the service worker has every file cached, so the installed app launches and plays with no connection. It opens full screen, respects the notch and home-indicator areas, and saves when it is sent to the background. An installed app keeps its own save, separate from the browser tab, so use Realm > Export save to carry progress across.
 
+### Keeping the save
+
+The save is one entry in the browser's storage, and browsers clear unused sites. The Realm tab, under Keeping, can copy the save as text or download it as a file, and import either one. It also keeps three sealed backups: the last save of the previous day, the realm just before an Unlighting, and the realm just before an import, restore or erase. Restore puts one back and keeps what it replaced, so a mistaken import can be undone. Copies set aside because they failed their seal can be exported or discarded but are never played. After two hours of play in a browser tab with no export in 14 days, one Whisper suggests exporting (at most once a week).
+
 A new version downloads in full in the background and waits, so one launch never mixes old and new files. The Realm tab then offers Apply update (it saves first and reloads). If you ignore it, the new version starts on the next cold launch. The version shown at the bottom of the Realm tab is a hash of the shipped files. Run `npm run stamp` after changing anything under `public/`; `npm run check` fails if it is stale, and `npm run deploy` stamps first.
 
 ## Deploy to Cloudflare Workers
@@ -79,6 +83,7 @@ There are no purchases, accounts or leaderboards, and no server. Everything runs
 | Two tabs on one save | The older tab stops and says so, also when the other window erases the realm. |
 | Holding a key on the Stillwell or a Lantern | Only a fresh press of Enter or Space acts. Key repeat is ignored. |
 | The old unsealed v1 save | Read once, size-limited, marked as irregular, and rewritten as a sealed save at once. It is no longer read after 30 June 2027. |
+| Restoring an edited backup | Backups are sealed strings and go through the same seal check and audit as any save. An altered one is not listed or restorable. |
 | Re-enabling a disabled button | Every purchase re-checks cost and unlock conditions in code. |
 
 Known limit: winding the device clock forward and leaving it there still earns one capped away credit per jump. With no server there is no trusted clock to compare against.
