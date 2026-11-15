@@ -10,7 +10,7 @@ const CSS = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'style.c
    lanterns, shafts and radiance. It is never a reward colour. Add a selector here only for a thing
    that really comes from the surface. See docs/design/UI_UX_GUIDE.md section 2. */
 const FROM_ABOVE = [
-  /^#lantern( span|::before)?$/, /^#lantern\./, /^\.shaft-box\.boss$/, /^\.shaft-box\.boss \.shaft-title$/, /^\.bar-fill\.light$/, /^\.bar-btn\.dot-above \.dot$/,
+  /^\.lantern( span|::before)?$/, /^\.lantern\./, /^\.shaft-box\.boss$/, /^\.shaft-box\.boss \.shaft-title$/, /^\.bar-fill\.light$/, /^\.bar-btn\.dot-above \.dot$/,
   /^\.toast\.k-sky$/, /^\.toast\.k-sky \.toast-title$/
 ];
 

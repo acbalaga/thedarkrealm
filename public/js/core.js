@@ -96,7 +96,7 @@
         codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
-        clicks: 0, lanterns: 0, played: 0, runTime: 0,
+        clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
         unlocked: { shafts: false, rites: false, unlight: false },
@@ -171,8 +171,13 @@
       s.runTime = num(o, 'runTime', 0, s.played, 0);
       s.clicks = int(o, 'clicks', 0, BIG, 0);
       s.lanterns = int(o, 'lanterns', 0, BIG, 0);
-      s.buffs.hush = num(o.buffs, 'hush', 0, 80, 0);
-      s.buffs.teeth = num(o.buffs, 'teeth', 0, 80, 0);
+      s.lanternSpawns = int(o, 'lanternSpawns', 0, BIG, 0);
+      s.streak = int(o, 'streak', 0, 1e6, 0);
+      s.bestStreak = int(o, 'bestStreak', 0, 1e6, 0);
+      s.processions = int(o, 'processions', 0, BIG, 0);
+      s.wardenLamps = int(o, 'wardenLamps', 0, BIG, 0);
+      s.buffs.hush = num(o.buffs, 'hush', 0, 200, 0);
+      s.buffs.teeth = num(o.buffs, 'teeth', 0, 200, 0);
       s.lanternIn = num(o, 'lanternIn', 0, 150, 75);
       ['shafts', 'rites', 'unlight'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
       s.ended = own(o, 'ended') && o.ended === true && s.bestShaft >= FINAL_SHAFT;
@@ -291,8 +296,14 @@
       // Hands and lanterns have physical limits.
       var maxClicks = Math.floor(s.played * CLICK_CAP + 100);
       if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
-      var maxLanterns = Math.floor(s.played / 35 + 5);
+      var maxLanterns = Math.floor(s.played / 20 + 5);
       if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+      // Streaks, Processions and Warden's Lamps are counted out of lanterns snuffed.
+      if (s.bestStreak > s.lanterns) { s.bestStreak = s.lanterns; fixes++; }
+      if (s.streak > s.bestStreak) { s.streak = s.bestStreak; fixes++; }
+      if (s.processions > s.lanterns / D.LANTERNS.procession.count) { s.processions = Math.floor(s.lanterns / D.LANTERNS.procession.count); fixes++; }
+      if (s.wardenLamps > s.lanterns) { s.wardenLamps = s.lanterns; fixes++; }
+      if (s.lanternSpawns < s.lanterns - 4 * s.processions) { s.lanternSpawns = Math.max(0, s.lanterns - 4 * s.processions); fixes++; }
       return fixes;
     }
 
@@ -586,6 +597,14 @@
       function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; }, false, function (x) { return totalRites() / x; });
     omenSet('Echoes recovered', [[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
       function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true, function (x) { return S.echoesTotal / x; });
+
+    // Added after the first sets so no earlier omen id moves. Grouped with the lantern omens by set name.
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'A Line of Small Nights', desc: 'Snuff a whole Procession.', mono: true,
+      cond: function () { return S.processions >= 1; }, prog: function () { return Math.min(1, S.processions); } });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'Unbroken', desc: 'Snuff 10 lanterns in a row.', mono: true,
+      cond: function () { return S.bestStreak >= 10; }, prog: function () { return Math.min(1, S.bestStreak / 10); } });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'Borrowed Light', desc: 'Snuff a Warden\'s Lamp.', mono: true,
+      cond: function () { return S.wardenLamps >= 1; }, prog: function () { return Math.min(1, S.wardenLamps); } });
 
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
@@ -889,15 +908,43 @@
       }
     }
 
-    /* ---------- stray lanterns ---------- */
+    /* ---------- lanterns ----------
+       Stray Lanterns, Votive Lanterns, Warden's Lamps and Processions. `lanterns` holds every lamp that is
+       on screen or about to be (a Procession's later lamps wait their turn). Each is
+       { id, kind, path, life, total, wait, proc }. The interface only draws them; every outcome is here. */
 
-    var lantern = null;       // { life } while one is drifting past, otherwise null
+    var LN = D.LANTERNS;
+    var lanterns = [], lampId = 0, procId = 0, procession = null, welcomeLantern = false;
 
     function lanternDelay() { return (70 + env.random() * 80) / modsFor(S).lanternRate; }
 
-    var welcomeLantern = false;    // set after a long absence: the next lantern gets a welcome-back line
+    /* Which kind a new lantern is. Pure: r in [0, 1). A Warden's Lamp needs a Lampwarden to be fighting. */
+    function lanternKind(r, boss) {
+      var x = r * 100, i;
+      for (i = 0; i < LN.kinds.length; i++) {
+        if (x < LN.kinds[i].w) return (LN.kinds[i].id === 'warden' && !boss) ? 'stray' : LN.kinds[i].id;
+        x -= LN.kinds[i].w;
+      }
+      return 'stray';
+    }
+    function kindLife(kind) { for (var i = 0; i < LN.kinds.length; i++) if (LN.kinds[i].id === kind) return LN.kinds[i].life; return 14; }
+
+    function addLamp(kind, path, life, wait, proc) {
+      lanterns.push({ id: ++lampId, kind: kind, path: path, life: life, total: life, wait: wait || 0, proc: proc || 0 });
+    }
+
+    function bossFight() { return S.unlocked.shafts && S.shaft % 10 === 0; }
+
     function spawnLantern() {
-      lantern = { life: 14 * modsFor(S).lanternLife };
+      S.lanternSpawns++;
+      var life = modsFor(S).lanternLife, i;
+      if (S.lanternSpawns % LN.procession.every === 0 && !(env.modalOpen && env.modalOpen())) {
+        procession = { id: ++procId, left: LN.procession.count };
+        for (i = 0; i < LN.procession.count; i++) addLamp('stray', i % 2 ? 'rtl' : 'ltr', LN.procession.life * life, i * LN.procession.gap, procession.id);
+      } else {
+        var kind = S.lanterns >= LN.unlockAfter ? lanternKind(env.random(), bossFight()) : 'stray';
+        addLamp(kind, kind === 'votive' ? 'drop' : (kind === 'warden' ? 'cross' : null), kindLife(kind) * life, 0, 0);
+      }
       if (welcomeLantern) { welcomeLantern = false; say('A lantern was waiting for someone to come back.'); }
     }
 
@@ -913,31 +960,29 @@
       return D.LANTERN_PATHS[D.LANTERN_PATHS.length - 1].id;
     }
 
-    function hideLantern() { lantern = null; S.lanternIn = lanternDelay(); }
+    /* After the last lamp goes, the wait for the next one starts. */
+    function lampsGone() { if (!lanterns.length) S.lanternIn = lanternDelay(); }
 
-    /* trusted: the interface vouches that a real input event caused this call.
-       Returns { kind, amount, duration } or null when there was nothing to snuff. */
-    function snuffLantern(trusted) {
-      if (trusted !== true || !lantern) return null;
-      hideLantern();
-      S.lanterns++;
-      var big = perk('hunger'), mult = big ? 3 : 1, dur = big ? 80 : 40;
+    function streakMult() { return 1 + LN.streak.step * Math.min(LN.streak.cap, S.streak); }
+
+    /* One roll from the outcome table. share scales the amount or the duration. */
+    function rollOutcome(share) {
+      var big = perk('hunger'), mult = (big ? 3 : 1) * streakMult() * share, dur = (big ? 80 : 40) * streakMult() * share;
       var opts = ['spill', 'spill', 'spill', 'hush', 'hush', 'hush'];
       if (S.unlocked.shafts) opts.push('teeth', 'teeth', 'echo', 'echo');
-      var pick = opts[Math.floor(env.random() * opts.length)];
-      var res;
+      var pick = opts[Math.floor(env.random() * opts.length)], res;
       if (pick === 'spill') {
         var g = Math.max(C.gps * 300, 30 * C.click) * mult;
         gain(g);
         say('The lantern gutters. Spilled light curdles into ' + fmt(g) + ' Gloom.');
         res = { kind: 'spill', amount: g, duration: 0 };
       } else if (pick === 'hush') {
-        S.buffs.hush = dur;
-        say('A Deep Hush falls. All Gloom ×5 for ' + dur + ' seconds.');
+        S.buffs.hush = Math.max(S.buffs.hush, dur);
+        say('A Deep Hush falls. All Gloom ×5 for ' + Math.round(dur) + ' seconds.');
         res = { kind: 'hush', amount: 5, duration: dur };
       } else if (pick === 'teeth') {
-        S.buffs.teeth = dur;
-        say('The Host bares its teeth. Might ×5 for ' + dur + ' seconds.');
+        S.buffs.teeth = Math.max(S.buffs.teeth, dur);
+        say('The Host bares its teeth. Might ×5 for ' + Math.round(dur) + ' seconds.');
         res = { kind: 'teeth', amount: 5, duration: dur };
       } else {
         var e = shaftReward(S.shaft) * 10 * mult;
@@ -945,8 +990,42 @@
         say('The lantern was carrying memories. ' + fmt(e) + ' Echoes recovered.');
         res = { kind: 'echo', amount: e, duration: 0 };
       }
-      afterChange();
       return res;
+    }
+
+    /* trusted: the interface vouches that a real input event caused this call. id: which lamp (the oldest
+       visible one when left out). Returns the first outcome's { kind, amount, duration } plus { lampKind, outcomes, lamp }, or null when there was nothing to snuff. */
+    function snuffLantern(trusted, id) {
+      if (trusted !== true) return null;
+      var lamp = null, i;
+      for (i = 0; i < lanterns.length; i++) if (lanterns[i].wait <= 0 && (!id || lanterns[i].id === id)) { lamp = lanterns[i]; break; }
+      if (!lamp) return null;
+      lanterns.splice(lanterns.indexOf(lamp), 1);
+      S.lanterns++;
+      var share = lamp.proc ? LN.procession.share : 1, outcomes = [], kind = lamp.kind;
+      if (kind === 'warden' && !bossFight()) kind = 'stray';          // the Host is no longer fighting a Lampwarden
+      if (kind === 'votive') { outcomes.push(rollOutcome(share)); outcomes.push(rollOutcome(share)); }
+      else if (kind === 'warden') {
+        var cut = LN.wardenShare * shaftMaxHp(S.shaft);
+        S.shaftHp = Math.max(0, S.shaftHp - cut);
+        S.bossTime = Math.min(bossMax(), S.bossTime + LN.wardenTime);
+        S.wardenLamps++;
+        say('The Warden\'s Lamp burns the Lampwarden\'s light thin.');
+        outcomes.push({ kind: 'warden', amount: cut, duration: LN.wardenTime });
+        if (S.shaftHp <= 1e-9) clearShaft();                              // cleared this way, it pays out as any seal does
+      } else outcomes.push(rollOutcome(share));
+      S.streak++;
+      if (S.streak > S.bestStreak) S.bestStreak = S.streak;
+      if (lamp.proc && procession && procession.id === lamp.proc && --procession.left === 0) {
+        var bonus = (perk('hunger') ? 80 : 40);
+        S.buffs.hush = Math.max(S.buffs.hush, bonus);
+        S.processions++;
+        say('The whole procession, dark. The Scribes are counting chains.');
+        procession = null;
+      }
+      lampsGone();
+      afterChange();
+      return { kind: outcomes[0].kind, amount: outcomes[0].amount, duration: outcomes[0].duration, lampKind: kind, outcomes: outcomes, lamp: lamp };
     }
 
     /* A hand gather. trusted: the interface vouches for the input event and its rate.
@@ -1015,8 +1094,20 @@
       if (S.buffs.teeth > 0) S.buffs.teeth = Math.max(0, S.buffs.teeth - dt);
       // Lanterns neither spawn nor expire while the page is hidden. One already drifting is withdrawn.
       chatterStep(dt);
-      if (env.hidden && env.hidden()) { if (lantern) { lantern = null; S.lanternIn = 5; } }
-      else if (lantern) { lantern.life -= dt; if (lantern.life <= 0) hideLantern(); }
+      if (env.hidden && env.hidden()) { if (lanterns.length) { lanterns = []; procession = null; S.lanternIn = 5; } }   // withdrawn, not lost: the streak is kept
+      else if (lanterns.length) {
+        for (var li = lanterns.length - 1; li >= 0; li--) {
+          var lp = lanterns[li];
+          if (lp.wait > 0) { lp.wait -= dt; continue; }
+          lp.life -= dt;
+          if (lp.life <= 0) {                                              // it drifted past unsnuffed
+            lanterns.splice(li, 1);
+            S.streak = 0;
+            if (lp.proc && procession && procession.id === lp.proc) procession = null;
+          }
+        }
+        lampsGone();
+      }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
       fight(dt);
       S.played += dt; S.runTime += dt;
@@ -1265,7 +1356,7 @@
       start: start, tick: tick, step: step, away: away, slowChecks: slowChecks, recalc: recalc, fight: fight,
       // actions
       buyDenizen: buyDenizen, buyUpg: buyUpg, buyRite: buyRite, buyPerk: buyPerk, unlight: unlight,
-      lanternPath: lanternPath, setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
+      lanternPath: lanternPath, lanternKind: lanternKind, setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
       // save
       load: load, save: save, exportText: exportText, importText: importText, erase: erase,
       listBackups: listBackups, restoreBackup: restoreBackup, listSetAside: listSetAside, discardSetAside: discardSetAside,
@@ -1287,7 +1378,8 @@
       fresh: fresh, adopt: adopt, audit: audit, seal: seal, pack: pack, unpack: unpack
     };
     Object.defineProperty(engine, 'S', { get: function () { return S; } });
-    Object.defineProperty(engine, 'lantern', { get: function () { return lantern; } });
+    Object.defineProperty(engine, 'lantern', { get: function () { for (var i = 0; i < lanterns.length; i++) if (lanterns[i].wait <= 0) return lanterns[i]; return null; } });
+    Object.defineProperty(engine, 'lanterns', { get: function () { return lanterns; } });
     Object.defineProperty(engine, 'halted', { get: function () { return halted; } });
     return engine;
   }

@@ -197,7 +197,7 @@ function simulate(opts) {
       return p * en.C.denGps;
     }
   };
-  var endT = days * DAY, lastLantern = null, clickDebt = 0;
+  var endT = days * DAY, seenLamp = {}, clickDebt = 0;
 
   for (var day = 0; day < days; day++) {
     var sessions = policy.sessions(day);
@@ -208,11 +208,12 @@ function simulate(opts) {
       for (var el = 0; el < len && sim.t < endT; el += STEP) {
         wall += STEP * 1000; mono += STEP * 1000; sim.t += STEP; sim.present += STEP;
         e.tick();
-        var L = e.lantern;
-        if (L && L !== lastLantern) {
-          lastLantern = L;
-          if (prng() < policy.snuff) e.snuffLantern(true);
-        }
+        // Every lamp that comes into view is decided on once: snuffed with the policy's chance, otherwise left to drift past.
+        e.lanterns.slice().forEach(function (l) {
+          if (l.wait > 0 || seenLamp[l.id]) return;
+          seenLamp[l.id] = true;
+          if (prng() < policy.snuff) e.snuffLantern(true, l.id);
+        });
         clickDebt += policy.clickRate(sim) * STEP;
         while (clickDebt >= 1) { e.gather(true); clickDebt -= 1; }
         spendGloom(e, policy, sim);

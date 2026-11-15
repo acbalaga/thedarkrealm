@@ -104,7 +104,7 @@ Do not build these. If a ticket drifts toward one, stop.
 
 There is no telemetry, so these are checked by the simulator (TDR-003) and by hand.
 
-- First Unlighting reachable in 60 to 120 minutes of mixed play. **Measured (TDR-003, `docs/design/balance-baseline.md`):** the first Unlighting that yields Nightglass is possible after 15 minutes of presence for the `casual` policy and 30 minutes for `active`, so it arrives earlier than this target. Under the simulator's own letting-go rule it happens after 9.2 hours (`casual`) and 34.5 hours (`active`) of presence.
+- First Unlighting reachable in 60 to 120 minutes of mixed play. **Measured (TDR-003, `docs/design/balance-baseline.md`):** the first Unlighting that yields Nightglass is possible after 15 minutes of presence for the `casual` policy and 30 minutes for `active`, so it arrives earlier than this target. Under the simulator's own letting-go rule it happens after 12.8 hours (`casual`) and 20.0 hours (`active`) of presence, and that figure moves by 20 percent or more with small changes (see the change log).
 - No stretch longer than 10 minutes in the first hour without a new unlock, omen or codex page.
 - A returning player has at least one new thing to do on every return after day 2 (Petition, Sounding, sky phase).
 - The Pane cannot be completed in under 30 days of honest play, and can be in under 120.

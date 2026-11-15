@@ -1161,39 +1161,66 @@
     render();
   }
 
-  /* Stray lanterns: the rules decide when one spawns and what it yields. This only draws it.
-     The scene may be hidden (another destination on a narrow screen). The animation is fitted when the
-     scene is on screen, starting part way through if the lantern has already been drifting. */
-  var lanternShown = false, lanternPathCur = 'ltr', lanternTotal = 14, lanternFitW = -1, lanternHang = 0.4;
-  function syncLantern() {
-    var L = engine.lantern, on = !!L, lan = $('lantern'), box = $('scene-box');
-    if (on && !lanternShown) {
-      lanternPathCur = S.opts.motion ? engine.lanternPath(Math.random()) : 'still';
-      lanternTotal = L.life;
-      lanternHang = 0.30 + Math.random() * 0.32;
-      lan.style.setProperty('--y', (12 + Math.random() * 55) + '%');
-      lan.style.setProperty('--x', (lanternPathCur === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65) + '%');
-      lan.hidden = false;
-      lanternFitW = -1;
-      live('A lantern is passing.');
+  /* Lanterns: the rules decide what spawns and what each one does. This only draws them, from a pool of five
+     elements (a Procession shows up to five at once). Each lamp is fitted when the scene is on screen,
+     starting part way through its life if it has already been drifting. */
+  var lanternSlots = [];
+  function buildLanterns() {
+    var box = $('scene-box'), first = $('lantern');
+    for (var i = 0; i < 5; i++) {
+      var node = i === 0 ? first : first.cloneNode(true);
+      if (i > 0) { node.removeAttribute('id'); node.hidden = true; box.insertBefore(node, first.nextSibling); }
+      node.addEventListener('click', (function (slot) { return function (ev) {
+        if (slot.id && engine.snuffLantern(!!ev && ev.isTrusted === true, slot.id)) render();
+      }; })(lanternSlots[i] = { node: node, id: 0, w: -1, path: 'ltr', hang: 0.4 }));
+      guardRepeat(node);
     }
-    $('snuff').hidden = !on || box.clientWidth === 0;
-    if (on) {
-      var w = box.clientWidth;
-      if (w === 0) lanternFitW = -1;
-      else if (w !== lanternFitW) {
-        lanternFitW = w;
-        ['path-ltr', 'path-rtl', 'path-drop', 'path-still'].forEach(function (c) { lan.classList.remove(c); });
-        void lan.offsetWidth;
-        /* The motion is CSS. These properties say where: the scene width for the crossings, a height to
-           hang at, and how far into its life the lantern already is. */
-        lan.style.setProperty('--w', w + 'px');
-        lan.style.setProperty('--hang', Math.round(box.clientHeight * lanternHang) + 'px');
-        lan.style.setProperty('--late', Math.max(0, lanternTotal - L.life).toFixed(2));
-        lan.classList.add('path-' + lanternPathCur);
+  }
+  var KIND_LABEL = { stray: 'Snuff the Stray Lantern', votive: 'Snuff the Votive Lantern', warden: 'Snuff the Warden\'s Lamp' };
+
+  function syncLantern() {
+    var vis = engine.lanterns.filter(function (l) { return l.wait <= 0; }), box = $('scene-box');
+    var fresh = false, i;
+    lanternSlots.forEach(function (sl) {                                  // free the slots whose lamp is gone
+      if (sl.id && !vis.some(function (l) { return l.id === sl.id; })) { sl.id = 0; sl.node.hidden = true; }
+    });
+    vis.forEach(function (l, n) {
+      var sl = null;
+      for (i = 0; i < lanternSlots.length; i++) if (lanternSlots[i].id === l.id) sl = lanternSlots[i];
+      if (!sl) {
+        for (i = 0; i < lanternSlots.length; i++) if (!lanternSlots[i].id) { sl = lanternSlots[i]; break; }
+        if (!sl) return;
+        sl.id = l.id; sl.w = -1; fresh = true;
+        var idx = engine.lanterns.indexOf(l);
+        sl.path = !S.opts.motion ? 'still' : l.path === 'drop' ? 'drop' : (l.path === 'ltr' || l.path === 'rtl') ? l.path
+          : l.path === 'cross' ? (Math.random() < 0.5 ? 'ltr' : 'rtl') : engine.lanternPath(Math.random());
+        sl.hang = 0.30 + Math.random() * 0.32;
+        sl.node.className = 'lantern kind-' + l.kind;
+        sl.node.setAttribute('aria-label', KIND_LABEL[l.kind] || KIND_LABEL.stray);
+        sl.node.style.setProperty('--dur', l.total + 's');
+        // A Procession alternates heights; with motion off its lamps stand in a row.
+        var y = l.proc ? 14 + (idx * 13) % 52 : 12 + Math.random() * 55;
+        sl.node.style.setProperty('--y', (!S.opts.motion && l.proc ? 40 : y) + '%');
+        sl.node.style.setProperty('--x', (!S.opts.motion && l.proc ? 10 + idx * 17 : (sl.path === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65)) + '%');
+        sl.node.hidden = false;
       }
-    } else if (lanternShown) lan.hidden = true;
-    lanternShown = on;
+      var w = box.clientWidth;
+      if (w === 0) sl.w = -1;
+      else if (w !== sl.w) {
+        sl.w = w;
+        ['path-ltr', 'path-rtl', 'path-drop', 'path-still'].forEach(function (c) { sl.node.classList.remove(c); });
+        void sl.node.offsetWidth;
+        sl.node.style.setProperty('--w', w + 'px');
+        sl.node.style.setProperty('--hang', Math.round(box.clientHeight * sl.hang) + 'px');
+        sl.node.style.setProperty('--late', Math.max(0, l.total - l.life).toFixed(2));
+        sl.node.classList.add('path-' + sl.path);
+      }
+    });
+    if (fresh) live(vis.length > 1 ? 'A procession of lanterns is passing.' : 'A lantern is passing.');
+    $('snuff').hidden = !vis.length || box.clientWidth === 0;
+    var sc = $('streak-chip');
+    sc.hidden = S.streak < 2;
+    if (!sc.hidden) { var tx = 'Unbroken ×' + S.streak; if (sc.textContent !== tx) sc.textContent = tx; }
   }
 
   /* Motes drifting into the well. Purely decorative. */
@@ -1313,7 +1340,6 @@
     engine.recalc();
     buildNav();
     guardRepeat($('well'));
-    guardRepeat($('lantern'));
     $('well').addEventListener('click', wellClick);
     $('why-gloom').addEventListener('click', function (ev) { ev.stopPropagation(); showWhy($('why-gloom'), 'What makes up Gloom per second', 'gloom'); });
     document.addEventListener('click', function (ev) {
@@ -1324,13 +1350,11 @@
     $('snuff').addEventListener('click', function (ev) {
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
     });
+    buildLanterns();
     document.addEventListener('keydown', trapFocus);
     document.addEventListener('keydown', onKey);
     guardRepeat($('strip-well'));
     $('strip-well').addEventListener('click', wellClick);
-    $('lantern').addEventListener('click', function (ev) {
-      if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
-    });
     $('modal').addEventListener('click', function (e) {
       if (e.target === $('modal') && modalQueue.length === 0) closeTopModal();
     });

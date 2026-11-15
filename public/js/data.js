@@ -93,6 +93,19 @@ window.TDR_DATA = (function () {
       text: function () { return 'The realm is quiet.'; } }
   ];
 
+  /* Lantern kinds: chance in percent (they add to 100), life in seconds. Warden's Lamps fall back to Stray
+     when no Lampwarden is being fought. Kinds unlock after 10 lanterns have been snuffed. */
+  var LANTERNS = {
+    unlockAfter: 10,
+    kinds: [ { id: 'stray', w: 80, life: 14 }, { id: 'votive', w: 14, life: 9 }, { id: 'warden', w: 6, life: 20 } ],
+    // Every `every`th spawn is a Procession: `count` Stray Lanterns, `gap` seconds apart, each alive `life` seconds, each paying `share` of a normal outcome.
+    procession: { every: 8, count: 5, gap: 1.6, life: 8, share: 0.4 },
+    // Each unbroken snuff adds `step` to lantern yields and durations, up to `cap` steps.
+    streak: { step: 0.04, cap: 10 },
+    // A Warden's Lamp takes this share of a Lampwarden's radiance and adds this many seconds to its timer.
+    wardenShare: 0.2, wardenTime: 10
+  };
+
   /* Stray Lantern paths and their weights. The interface picks one per lantern. */
   var LANTERN_PATHS = [
     { id: 'ltr', w: 35 },
@@ -301,6 +314,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, OBJECTIVES: OBJECTIVES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();
