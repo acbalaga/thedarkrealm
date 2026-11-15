@@ -92,10 +92,12 @@ test('hostile input is rejected or defaulted', () => {
   assert.equal(proto.polluted, undefined);
   assert.equal(Object.keys(proto).indexOf('constructor'), -1);
   assert.equal(proto.den.gleaner, undefined);
-  const wrong = e.adopt({ gloom: '9e99', totalGloom: [1], runGloom: null, den: 5, upg: 'x', echoes: {}, tab: 'nope', opts: { buy: 7 } });
+  const wrong = e.adopt({ gloom: '9e99', totalGloom: [1], runGloom: null, den: 5, upg: 'x', echoes: {}, tab: 'nope', nav: { dest: 'elsewhere', page: { realm: '<script>', host: 5 } }, opts: { buy: 7 } });
   assert.equal(wrong.gloom, 0);
   assert.equal(wrong.totalGloom, 0);
-  assert.equal(wrong.tab, 'den');
+  assert.equal(wrong.nav.dest, 'seat');
+  assert.equal(wrong.nav.page.realm, 'den');
+  assert.equal(wrong.nav.page.host, 'shaft');
   assert.equal(wrong.opts.buy, 1);
   assert.equal(e.adopt('a string').totalGloom, 0);
   assert.equal(e.adopt(null).totalGloom, 0);

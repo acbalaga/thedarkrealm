@@ -2,8 +2,8 @@
 (function () {
   'use strict';
 
-  var D = window.TDR_DATA, CORE = window.TDR_CORE;
-  try { delete window.TDR_DATA; delete window.TDR_CORE; } catch (e) {}   // keep the tables and the rules out of console reach
+  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create();
+  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; } catch (e) {}   // keep the tables and the rules out of console reach
   var CLICK_CAP = 14;       // hand gathers accepted per second
   var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
   try { delete window.TDR_VERSION; } catch (e) {}
@@ -78,6 +78,8 @@
   function say(msg) {
     logLines.unshift(msg);
     if (logLines.length > 40) logLines.pop();
+    var sw = $('strip-whisper');
+    if (sw) sw.textContent = msg;
     var ul = $('log');
     if (!ul) return;
     var li = el('li', null, msg);
@@ -125,56 +127,102 @@
 
   /* ---------- pages ---------- */
 
-  var TABS = [
-    { id: 'den', label: 'Denizens' },
-    { id: 'work', label: 'Workings' },
-    { id: 'shaft', label: 'Sunshafts', lock: 'shafts' },
-    { id: 'rite', label: 'Rites', lock: 'rites' },
-    { id: 'unl', label: 'Unlighting', lock: 'unlight' },
-    { id: 'omen', label: 'Omens' },
-    { id: 'codex', label: 'Codex' },
-    { id: 'set', label: 'Realm' }
-  ];
-  var pages = {}, tabBtns = {}, updaters = {};
-  var upgSig = '';
+  /* ---------- navigation ----------
+     Five destinations with sub-pages (the map lives in nav.js). On a wide screen the Seat is the left
+     column and is always there. On a narrow one it is a destination of its own, and the other
+     destinations show a well strip under the header so gathering never leaves the screen. */
+  var BUILDERS = { den: buildDenizens, work: buildWorkings, shaft: buildShafts, rite: buildRites, unl: buildUnlighting,
+    omen: buildOmens, codex: buildCodex, set: buildSettings };
+  var pages = {}, updaters = {}, destBtns = {}, barBtns = {}, subBtns = [];
+  var wideQuery = window.matchMedia ? matchMedia('(min-width: 861px)') : { matches: true, addEventListener: null };
+  var cur = null, navSig = '', upgSig = '';
 
-  function buildTabs() {
-    var nav = $('tabs'), host = $('pages');
-    TABS.forEach(function (t) {
-      var b = el('button', 'tab', t.label);
-      b.type = 'button';
-      b.setAttribute('role', 'tab');
-      b.onclick = function () { showTab(t.id); };
-      b.appendChild(el('i', 'dot'));
-      nav.appendChild(b);
-      tabBtns[t.id] = b;
-      var p = el('div', 'page');
-      p.hidden = true;
-      host.appendChild(p);
-      pages[t.id] = p;
-    });
-    updaters.den = buildDenizens(pages.den);
-    updaters.work = buildWorkings(pages.work);
-    updaters.shaft = buildShafts(pages.shaft);
-    updaters.rite = buildRites(pages.rite);
-    updaters.unl = buildUnlighting(pages.unl);
-    updaters.omen = buildOmens(pages.omen);
-    updaters.codex = buildCodex(pages.codex);
-    updaters.set = buildSettings(pages.set);
+  function mountPage(def) {
+    if (def.id === 'seat' || pages[def.id]) return;
+    var node = el('div', 'page');
+    node.hidden = true;
+    $('pages').appendChild(node);
+    pages[def.id] = node;
+    updaters[def.id] = (def.build || BUILDERS[def.id])(node);
   }
 
-  function showTab(id) {
-    var t = TABS.filter(function (x) { return x.id === id; })[0];
-    if (!t || (t.lock && !S.unlocked[t.lock])) id = 'den';
-    S.tab = id;
-    TABS.forEach(function (x) {
-      pages[x.id].hidden = x.id !== id;
-      tabBtns[x.id].classList.toggle('active', x.id === id);
-      tabBtns[x.id].setAttribute('aria-selected', x.id === id ? 'true' : 'false');
+  /* Later features register a page here: addPage('host', { id: 'soundings', label: 'Soundings', lock: 'rites', build: fn }). */
+  function addPage(destId, def) {
+    NAVM.addPage(destId, def);
+    mountPage(def);
+    navSig = '';
+    if (cur) applyNav();
+  }
+
+  function buildNav() {
+    var tabs = $('tabs'), bar = $('bar');
+    NAVM.dests.forEach(function (d) {
+      if (!d.seatOnly) {
+        var t = el('button', 'tab', d.label);
+        t.type = 'button';
+        t.setAttribute('role', 'tab');
+        t.onclick = function () { goDest(d.id); };
+        t.appendChild(el('i', 'dot'));
+        tabs.appendChild(t);
+        destBtns[d.id] = t;
+      }
+      var b = el('button', 'bar-btn');
+      b.type = 'button';
+      var g = el('span', 'bar-glyph', d.glyph); g.setAttribute('aria-hidden', 'true');
+      b.appendChild(g); b.appendChild(el('span', 'bar-label', d.label)); b.appendChild(el('i', 'dot'));
+      b.onclick = function () { goDest(d.id); };
+      bar.appendChild(b);
+      barBtns[d.id] = b;
+      d.pages.forEach(mountPage);
     });
-    if (id === 'codex') S.codexUnread = 0;
+    $('strip-whisper').onclick = function () { goDest('seat'); };
+    if (wideQuery.addEventListener) wideQuery.addEventListener('change', function () { applyNav(); render(); });
+  }
+
+  function goDest(id, pageId) {
+    S.nav.dest = id;
+    if (pageId) S.nav.page[id] = pageId;
+    applyNav();
     render();
   }
+  function goPage(destId, pageId) { goDest(destId, pageId); }
+
+  /* Works out what to show from the saved choice and what is unlocked, and shows it. */
+  function applyNav() {
+    cur = NAVM.resolve(S.nav, S.unlocked, wideQuery.matches);
+    var d = cur.dest, p = cur.page;
+    document.body.setAttribute('data-dest', d.id);
+    NAVM.dests.forEach(function (x) {
+      var vis = NAVM.destVisible(x, S.unlocked), on = x.id === d.id;
+      if (destBtns[x.id]) {
+        destBtns[x.id].hidden = !vis;
+        destBtns[x.id].classList.toggle('active', on);
+        destBtns[x.id].setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+      barBtns[x.id].hidden = !vis;
+      barBtns[x.id].classList.toggle('active', on);
+      if (on) barBtns[x.id].setAttribute('aria-current', 'page'); else barBtns[x.id].removeAttribute('aria-current');
+    });
+    Object.keys(pages).forEach(function (id) { pages[id].hidden = id !== p.id; });
+    var vis = NAVM.pagesOf(d, S.unlocked), sig = d.id + ':' + vis.map(function (x) { return x.id; }).join(',') + ':' + p.id;
+    var sub = $('subnav');
+    if (sig !== navSig) {
+      navSig = sig;
+      sub.replaceChildren();
+      subBtns = [];
+      vis.forEach(function (x) {
+        var b = el('button', 'seg-btn' + (x.id === p.id ? ' on' : ''), x.label);
+        b.type = 'button';
+        b.onclick = function () { goPage(d.id, x.id); };
+        sub.appendChild(b);
+        subBtns.push({ id: x.id, b: b });
+      });
+      sub.hidden = vis.length < 2 || d.seatOnly;
+    }
+    if (p.id === 'codex') S.codexUnread = 0;
+  }
+
+  function viewing(pageId) { return !!cur && cur.page.id === pageId; }
 
   /* Denizens */
   function buildDenizens(page) {
@@ -682,12 +730,15 @@
     $('r-glassb').textContent = '+' + fmt(S.glassTotal * 5) + '%';
     $('fathom').textContent = 'Vesperdeep  ·  Fathom ' + (S.unlightings + 1);
 
-    TABS.forEach(function (t) { tabBtns[t.id].hidden = !!(t.lock && !S.unlocked[t.lock]); });
-    var canWork = S.tab !== 'work' && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
-    tabBtns.work.classList.toggle('has-dot', canWork);
-    tabBtns.codex.classList.toggle('has-dot', S.codexUnread > 0);
-    tabBtns.set.classList.toggle('has-dot', S.tab !== 'set' && !!waitingWorker);
-    tabBtns.unl.classList.toggle('has-dot', S.tab !== 'unl' && S.unlightings === 0 && glassGain() >= 1);
+    applyNav();
+    var canWork = !viewing('work') && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
+    var unlReady = !viewing('unl') && S.unlightings === 0 && glassGain() >= 1;
+    badge('realm', canWork);
+    badge('ledger', S.codexUnread > 0 || (!viewing('set') && !!waitingWorker));
+    badge('deep', unlReady);
+    // The one gold badge: a lantern is passing while the player is somewhere that cannot show it.
+    barBtns.seat.classList.toggle('has-dot', !!engine.lantern && cur.dest.id !== 'seat');
+    barBtns.seat.classList.add('dot-above');
 
     setBuff('hush', 'Deep Hush', S.buffs.hush);
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
@@ -696,7 +747,12 @@
     var title = fmt(S.gloom) + ' Gloom · The Dark Realm';
     if (document.title !== title) document.title = title;
 
-    if (updaters[S.tab]) updaters[S.tab]();
+    if (cur && updaters[cur.page.id]) updaters[cur.page.id]();
+  }
+
+  function badge(destId, on) {
+    if (destBtns[destId]) destBtns[destId].classList.toggle('has-dot', on);
+    barBtns[destId].classList.toggle('has-dot', on);
   }
   /* Two chips that are kept and updated in place, never rebuilt. Hush sits above Teeth. */
   var buffEls = { hush: el('span', 'buff'), teeth: el('span', 'buff teeth') };
@@ -730,41 +786,64 @@
     });
   }
 
+  /* A gained amount floats up from where the pointer was, or from the anchor when there was no pointer. */
+  function floatGain(amount, ev, boxEl, anchor, host, cls) {
+    var r = boxEl.getBoundingClientRect(), wr = anchor.getBoundingClientRect();
+    var x = ev && ev.clientX ? ev.clientX - r.left : wr.left - r.left + wr.width / 2 + (Math.random() * 40 - 20);
+    var y = ev && ev.clientY ? ev.clientY - r.top : wr.top - r.top + wr.height / 3;
+    var f = el('span', cls, '+' + fmt(amount));
+    f.style.left = x + 'px'; f.style.top = y + 'px';
+    host.appendChild(f);
+    if (host.children.length > 24) host.removeChild(host.firstChild);
+    setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 900);
+  }
+
+  /* The Stillwell in the scene and the small one in the well strip share this handler, so they share
+     the same trust and rate checks. */
   function wellClick(ev) {
     if (!clickAllowed(ev)) return;
     var amount = engine.gather(true);
     if (!amount) return;
-    var box = $('scene-box'), r = box.getBoundingClientRect(), wr = $('well').getBoundingClientRect();
-    var x = ev && ev.clientX ? ev.clientX - r.left : wr.left - r.left + wr.width / 2 + (Math.random() * 40 - 20);
-    var y = ev && ev.clientY ? ev.clientY - r.top : wr.top - r.top + wr.height / 3;
-    var f = el('span', 'floater', '+' + fmt(amount));
-    f.style.left = x + 'px'; f.style.top = y + 'px';
-    var host = $('floaters');
-    host.appendChild(f);
-    if (host.children.length > 24) host.removeChild(host.firstChild);
-    setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 900);
-    var w = $('well');
-    w.classList.remove('pulse'); void w.offsetWidth; w.classList.add('pulse');
+    if (ev && ev.currentTarget && ev.currentTarget.id === 'strip-well') {
+      floatGain(amount, ev, $('strip'), $('strip-well'), $('strip-floaters'), 'floater small');
+    } else {
+      floatGain(amount, ev, $('scene-box'), $('well'), $('floaters'), 'floater');
+      var w = $('well');
+      w.classList.remove('pulse'); void w.offsetWidth; w.classList.add('pulse');
+    }
     render();
   }
 
-  /* Stray lanterns: the rules decide when one spawns and what it yields. This only draws it. */
-  var lanternShown = false;
+  /* Stray lanterns: the rules decide when one spawns and what it yields. This only draws it.
+     The scene may be hidden (another destination on a narrow screen). The animation is fitted when the
+     scene is on screen, starting part way through if the lantern has already been drifting. */
+  var lanternShown = false, lanternPathCur = 'ltr', lanternTotal = 14, lanternFitW = -1, lanternHang = 0.4;
   function syncLantern() {
-    var on = !!engine.lantern, lan = $('lantern');
+    var L = engine.lantern, on = !!L, lan = $('lantern'), box = $('scene-box');
     if (on && !lanternShown) {
-      var box = $('scene-box'), path = S.opts.motion ? engine.lanternPath(Math.random()) : 'still';
-      ['path-ltr', 'path-rtl', 'path-drop', 'path-still'].forEach(function (c) { lan.classList.remove(c); });
-      void lan.offsetWidth;
-      /* The motion is CSS. These properties only say where: width of the scene for the crossings,
-         a height for the lantern to hang at, and a start point for the drop and for motion off. */
-      lan.style.setProperty('--w', box.clientWidth + 'px');
+      lanternPathCur = S.opts.motion ? engine.lanternPath(Math.random()) : 'still';
+      lanternTotal = L.life;
+      lanternHang = 0.30 + Math.random() * 0.32;
       lan.style.setProperty('--y', (12 + Math.random() * 55) + '%');
-      lan.style.setProperty('--x', (path === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65) + '%');
-      lan.style.setProperty('--hang', Math.round(box.clientHeight * (0.30 + Math.random() * 0.32)) + 'px');
-      lan.classList.add('path-' + path);
+      lan.style.setProperty('--x', (lanternPathCur === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65) + '%');
       lan.hidden = false;
-    } else if (!on && lanternShown) lan.hidden = true;
+      lanternFitW = -1;
+    }
+    if (on) {
+      var w = box.clientWidth;
+      if (w === 0) lanternFitW = -1;
+      else if (w !== lanternFitW) {
+        lanternFitW = w;
+        ['path-ltr', 'path-rtl', 'path-drop', 'path-still'].forEach(function (c) { lan.classList.remove(c); });
+        void lan.offsetWidth;
+        /* The motion is CSS. These properties say where: the scene width for the crossings, a height to
+           hang at, and how far into its life the lantern already is. */
+        lan.style.setProperty('--w', w + 'px');
+        lan.style.setProperty('--hang', Math.round(box.clientHeight * lanternHang) + 'px');
+        lan.style.setProperty('--late', Math.max(0, lanternTotal - L.life).toFixed(2));
+        lan.classList.add('path-' + lanternPathCur);
+      }
+    } else if (lanternShown) lan.hidden = true;
     lanternShown = on;
   }
 
@@ -827,10 +906,12 @@
     var loaded = engine.load();
     S = engine.S;
     engine.recalc();
-    buildTabs();
+    buildNav();
     guardRepeat($('well'));
     guardRepeat($('lantern'));
     $('well').addEventListener('click', wellClick);
+    guardRepeat($('strip-well'));
+    $('strip-well').addEventListener('click', wellClick);
     $('lantern').addEventListener('click', function (ev) {
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
     });
@@ -842,7 +923,7 @@
     S.codexUnread = isNew ? 1 : S.codexUnread;
     say(isNew ? 'You wake on the floor of a throne room. The seat is empty. The Stillwell is at your feet.' : 'The seat is as you left it.');
     if (loaded.note) say(loaded.note);
-    showTab(S.tab);
+    applyNav();
     applyMotion();
     engine.start();
     frame();

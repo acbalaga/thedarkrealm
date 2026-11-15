@@ -16,7 +16,10 @@
   var BOSS_TIME = 45;       // seconds allowed against a Lampwarden
   var FINAL_SHAFT = 150;
   var GLASS_EXP = 0.3;      // Nightglass = (run Gloom / 1e9) ^ this
-  var TAB_IDS = ['den', 'work', 'shaft', 'rite', 'unl', 'omen', 'codex', 'set'];
+  var NAV_DESTS = ['seat', 'realm', 'host', 'deep', 'ledger'];
+  // Where each page of the first interface (one flat row of tabs) lives in the five destinations.
+  var OLD_TABS = { den: ['realm', 'den'], work: ['realm', 'work'], shaft: ['host', 'shaft'], rite: ['host', 'rite'],
+    unl: ['deep', 'unl'], omen: ['ledger', 'omen'], codex: ['ledger', 'codex'], set: ['ledger', 'set'] };
 
   /* ---------- seeded randomness ----------
      Use rng(label, counter) for anything a reload could otherwise reroll: daily picks, a fathom's
@@ -96,7 +99,7 @@
         exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
         remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
         opts: { sci: false, motion: true, buy: 1 },
-        tab: 'den'
+        nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
 
@@ -169,7 +172,17 @@
       s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
-      if (own(o, 'tab') && TAB_IDS.indexOf(o.tab) >= 0) s.tab = o.tab;
+      if (own(o, 'nav') && o.nav !== null && typeof o.nav === 'object') {
+        // Page ids are free text of a safe shape: later pages are registered by the interface, not known here.
+        if (own(o.nav, 'dest') && NAV_DESTS.indexOf(o.nav.dest) >= 0) s.nav.dest = o.nav.dest;
+        ['realm', 'host', 'deep', 'ledger'].forEach(function (d) {
+          var v = own(o.nav, 'page') ? o.nav.page[d] : undefined;
+          if (own(o.nav, 'page') && own(o.nav.page, d) && typeof v === 'string' && /^[a-z][a-z0-9]{0,15}$/.test(v)) s.nav.page[d] = v;
+        });
+      } else if (own(o, 'tab') && own(OLD_TABS, o.tab)) {
+        s.nav.dest = OLD_TABS[o.tab][0];
+        s.nav.page[OLD_TABS[o.tab][0]] = OLD_TABS[o.tab][1];
+      }
       if (audit(s) > 0) s.marks++;
       return s;
     }
@@ -1051,7 +1064,7 @@
       D.CODEX.forEach(function (c) {
         if (!S.codex[c.id] && c.when(f)) {
           S.codex[c.id] = 1; dirty.codex = true;
-          if (S.tab !== 'codex') S.codexUnread++;
+          if (!(S.nav.dest === 'ledger' && S.nav.page.ledger === 'codex')) S.codexUnread++;
           if (c.id !== 'waking') say('Codex: ' + c.title + '.');
         }
       });

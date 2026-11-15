@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const { serve } = require('./server');
+const { serve, openKeeping } = require('./server');
 
 let chromium = null;
 try { chromium = require('playwright').chromium; } catch (e) { /* skipped below */ }
@@ -23,7 +23,7 @@ test('download a save as a file, import it from the file, and restore the replac
     await page.goto('http://127.0.0.1:' + srv.address().port + '/');
     await page.waitForTimeout(400);
     for (let i = 0; i < 5; i++) await page.click('#well');
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    await openKeeping(page);
 
     await page.getByRole('button', { name: 'Export save' }).click();
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download file' }).click()]);
@@ -42,7 +42,7 @@ test('download a save as a file, import it from the file, and restore the replac
     await page.waitForTimeout(300);
     assert.notEqual(await page.textContent('#r-gloom'), gloomBefore);
 
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    await openKeeping(page);
     await page.locator('text=Before the last import, restore or erase').waitFor();
     await page.getByRole('button', { name: 'Restore' }).click();
     await Promise.all([page.waitForNavigation(), page.getByRole('button', { name: 'Restore', exact: true }).last().click()]);

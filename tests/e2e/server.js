@@ -32,4 +32,11 @@ function serve(dir) {
   return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok(srv)));
 }
 
-module.exports = { serve, PUB };
+/* Opens Ledger, then its Keeping page. Works at desktop width (tab row) and on a phone (bottom bar). */
+async function openKeeping(page) {
+  const tab = page.locator('#tabs button, #bar button', { hasText: 'Ledger' }).locator('visible=true').first();
+  await tab.click();
+  await page.locator('#subnav button', { hasText: 'Keeping' }).click();
+}
+
+module.exports = { serve, PUB, openKeeping };

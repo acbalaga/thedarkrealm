@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { serve, PUB } = require('./server');
+const { serve, PUB, openKeeping } = require('./server');
 
 let chromium = null;
 try { chromium = require('playwright').chromium; } catch (e) { /* skipped below */ }
@@ -31,7 +31,7 @@ test('a new version waits, is offered, and applies on request', { skip: !chromiu
     await page.waitForFunction(() => navigator.serviceWorker.controller || navigator.serviceWorker.getRegistration().then((r) => r && r.active));
     await page.reload();                                   // now controlled by the worker
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    await openKeeping(page);
     const v1 = (await page.locator('text=/^Version tdr-/').textContent()).trim();
     assert.equal(await page.locator('button', { hasText: 'Apply update' }).isVisible(), false);
 
@@ -42,13 +42,13 @@ test('a new version waits, is offered, and applies on request', { skip: !chromiu
     fs.writeFileSync(sw, fs.readFileSync(sw, 'utf8').replace(/var CACHE = '[^']*';/, "var CACHE = 'tdr-second0000';"));
 
     await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    await openKeeping(page);
     await page.locator('button', { hasText: 'Apply update' }).waitFor({ state: 'visible', timeout: 10000 });
     assert.equal((await page.locator('text=/^Version tdr-/').textContent()).trim(), v1, 'the running page keeps its version until applied');
 
     await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Apply update' }).click()]);
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    await openKeeping(page);
     assert.equal((await page.locator('text=/^Version tdr-/').textContent()).trim(), 'Version tdr-second0000');
 
     // Offline still loads from the new cache.

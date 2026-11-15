@@ -36,6 +36,11 @@
     <div class="res res-echo" id="res-echo" hidden><span class="res-label">Echoes</span><span class="res-val" id="r-echo">0</span><span class="res-sub" id="r-might">Might 1</span></div>
     <div class="res res-glass" id="res-glass" hidden><span class="res-label">Nightglass</span><span class="res-val" id="r-glass">0</span><span class="res-sub" id="r-glassb">+0%</span></div>
   </div>
+  <div id="strip">
+    <button id="strip-well" type="button" aria-label="Gather Gloom"></button>
+    <button id="strip-whisper" type="button" aria-label="Latest whisper. Go to the Seat."></button>
+    <div id="strip-floaters" aria-hidden="true"></div>
+  </div>
 </header>
 
 <main>
@@ -58,9 +63,12 @@
 
   <section id="panel">
     <nav id="tabs" role="tablist"></nav>
+    <div id="subnav" class="seg subnav" hidden></div>
     <div id="pages"></div>
   </section>
 </main>
+
+<nav id="bar" aria-label="Destinations"></nav>
 
 <div id="modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true">
@@ -73,6 +81,7 @@
 <noscript><p class="noscript">The Dark Realm needs JavaScript to run. Everything stays on your device.</p></noscript>
 <script src="js/data.js"></script>
 <script src="js/core.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/version.js"></script>
 <script src="js/game.js"></script>
 </body>

@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 let chromium = null;
 try { chromium = require('playwright').chromium; } catch (e) { /* skipped below */ }
 
-const { serve } = require('./server');
+const { serve, openKeeping } = require('./server');
 
 test('no CSP violations through a click-through, and string HTML sinks are refused', { skip: !chromium && 'playwright is not installed' }, async () => {
   const srv = await serve();
@@ -27,8 +27,12 @@ test('no CSP violations through a click-through, and string HTML sinks are refus
     for (let i = 0; i < 40; i++) { await page.click('#well'); }
     // Open every tab that is visible, then the Realm tab's modals.
     const tabs = await page.$$('#tabs button');
-    for (const t of tabs) { if (await t.isVisible()) { await t.click().catch(() => {}); await page.waitForTimeout(100); } }
-    await page.locator('#tabs button', { hasText: 'Realm' }).click();
+    for (const t of tabs) {
+      if (!(await t.isVisible())) continue;
+      await t.click().catch(() => {});
+      for (const sb of await page.$$('#subnav button')) { await sb.click().catch(() => {}); await page.waitForTimeout(60); }
+    }
+    await openKeeping(page);
     await page.getByRole('button', { name: 'Export save' }).click();
     assert.match(await page.inputValue('#io'), /^TDR2\./);
     await page.getByRole('button', { name: 'Done' }).click();
