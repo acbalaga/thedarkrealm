@@ -864,7 +864,23 @@
 
     function lanternDelay() { return (70 + env.random() * 80) / modsFor(S).lanternRate; }
 
-    function spawnLantern() { lantern = { life: 14 * modsFor(S).lanternLife }; }
+    var welcomeLantern = false;    // set after a long absence: the next lantern gets a welcome-back line
+    function spawnLantern() {
+      lantern = { life: 14 * modsFor(S).lanternLife };
+      if (welcomeLantern) { welcomeLantern = false; say('A lantern was waiting for someone to come back.'); }
+    }
+
+    /* Which way a new lantern travels. Pure: the interface passes a random number in [0, 1). */
+    function lanternPath(r) {
+      var total = 0, i, x;
+      for (i = 0; i < D.LANTERN_PATHS.length; i++) total += D.LANTERN_PATHS[i].w;
+      x = r * total;
+      for (i = 0; i < D.LANTERN_PATHS.length; i++) {
+        if (x < D.LANTERN_PATHS[i].w) return D.LANTERN_PATHS[i].id;
+        x -= D.LANTERN_PATHS[i].w;
+      }
+      return D.LANTERN_PATHS[D.LANTERN_PATHS.length - 1].id;
+    }
 
     function hideLantern() { lantern = null; S.lanternIn = lanternDelay(); }
 
@@ -923,7 +939,9 @@
       gain(C.gps * dt);
       if (S.buffs.hush > 0) S.buffs.hush = Math.max(0, S.buffs.hush - dt);
       if (S.buffs.teeth > 0) S.buffs.teeth = Math.max(0, S.buffs.teeth - dt);
-      if (lantern) { lantern.life -= dt; if (lantern.life <= 0) hideLantern(); }
+      // Lanterns neither spawn nor expire while the page is hidden. One already drifting is withdrawn.
+      if (env.hidden && env.hidden()) { if (lantern) { lantern = null; S.lanternIn = 5; } }
+      else if (lantern) { lantern.life -= dt; if (lantern.life <= 0) hideLantern(); }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
       fight(dt);
       S.played += dt; S.runTime += dt;
@@ -939,6 +957,7 @@
       }
       var capH = awayCapHours();
       var t = Math.min(sec, capH * 3600);
+      if (sec >= 600) { S.lanternIn = Math.min(S.lanternIn, 8); welcomeLantern = true; }
       var eff = awayPace();
       S.buffs.hush = 0; S.buffs.teeth = 0;
       recalc({ present: false, wall: wallNow() });
@@ -1047,7 +1066,7 @@
       start: start, tick: tick, step: step, away: away, slowChecks: slowChecks, recalc: recalc, fight: fight,
       // actions
       buyDenizen: buyDenizen, buyUpg: buyUpg, buyRite: buyRite, buyPerk: buyPerk, unlight: unlight,
-      setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
+      lanternPath: lanternPath, setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
       // save
       load: load, save: save, exportText: exportText, importText: importText, erase: erase,
       listBackups: listBackups, restoreBackup: restoreBackup, listSetAside: listSetAside, discardSetAside: discardSetAside,

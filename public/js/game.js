@@ -18,6 +18,7 @@
     wallNow: wallNow,
     monoNow: monoNow,
     random: function () { return Math.random(); },
+    hidden: function () { return document.hidden === true; },
     say: function (msg) { say(msg); },
     storage: {
       get: function (k) { return localStorage.getItem(k); },
@@ -731,9 +732,16 @@
   function syncLantern() {
     var on = !!engine.lantern, lan = $('lantern');
     if (on && !lanternShown) {
-      lan.style.top = (12 + Math.random() * 55) + '%';
-      lan.classList.remove('drift'); void lan.offsetWidth;
-      if (S.opts.motion) lan.classList.add('drift'); else lan.style.left = (15 + Math.random() * 65) + '%';
+      var box = $('scene-box'), path = S.opts.motion ? engine.lanternPath(Math.random()) : 'still';
+      ['path-ltr', 'path-rtl', 'path-drop', 'path-still'].forEach(function (c) { lan.classList.remove(c); });
+      void lan.offsetWidth;
+      /* The motion is CSS. These properties only say where: width of the scene for the crossings,
+         a height for the lantern to hang at, and a start point for the drop and for motion off. */
+      lan.style.setProperty('--w', box.clientWidth + 'px');
+      lan.style.setProperty('--y', (12 + Math.random() * 55) + '%');
+      lan.style.setProperty('--x', (path === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65) + '%');
+      lan.style.setProperty('--hang', Math.round(box.clientHeight * (0.30 + Math.random() * 0.32)) + 'px');
+      lan.classList.add('path-' + path);
       lan.hidden = false;
     } else if (!on && lanternShown) lan.hidden = true;
     lanternShown = on;

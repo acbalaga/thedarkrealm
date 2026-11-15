@@ -118,7 +118,8 @@ main {
 @keyframes rise { to { transform: translate(-50%, -70px); opacity: 0; } }
 
 #lantern {
-  position: absolute; left: -50px; width: 44px; height: 54px; border: 0; background: none; padding: 0; cursor: pointer; z-index: 2;
+  position: absolute; left: 0; top: var(--y, 40%); width: 44px; height: 54px; border: 0; background: none; padding: 0; cursor: pointer; z-index: 2;
+  will-change: transform;
 }
 #lantern span {
   display: block; width: 26px; height: 34px; margin: 10px auto 0; border-radius: 8px 8px 12px 12px;
@@ -127,8 +128,21 @@ main {
   animation: sway 2.2s ease-in-out infinite;
 }
 #lantern::before { content: ""; position: absolute; left: 50%; top: -400px; width: 1px; height: 410px; background: rgba(241, 197, 107, .35); }
-#lantern.drift { animation: drift 14s linear forwards; }
-@keyframes drift { from { left: -50px; } to { left: 100%; } }
+/* Three paths, all 14 s, all on transform so the browser can composite them. The scripts set --w, --x, --y, --hang. */
+#lantern.path-ltr { animation: lantern-ltr 14s linear forwards, lantern-bob 3.2s ease-in-out infinite; }
+#lantern.path-rtl { animation: lantern-rtl 14s linear forwards, lantern-bob 3.2s ease-in-out infinite; }
+#lantern.path-drop { left: var(--x, 40%); top: 0; animation: lantern-drop 14s forwards; }
+#lantern.path-still { left: var(--x, 40%); top: var(--y, 40%); }
+@keyframes lantern-ltr { from { transform: translateX(-50px); } to { transform: translateX(var(--w, 100%)); } }
+@keyframes lantern-rtl { from { transform: translateX(var(--w, 100%)); } to { transform: translateX(-50px); } }
+@keyframes lantern-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 8px; } }
+/* Lowered on its chain over the first 20 percent, hangs (the lamp still sways) to 80 percent, drawn back up. */
+@keyframes lantern-drop {
+  0% { transform: translateY(-90px); animation-timing-function: ease-out; }
+  20%, 80% { transform: translateY(var(--hang, 40%)); }
+  80% { animation-timing-function: ease-in; }
+  100% { transform: translateY(-90px); }
+}
 @keyframes sway { 50% { transform: rotate(7deg) translateY(3px); } }
 
 .log-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }

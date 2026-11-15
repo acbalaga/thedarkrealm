@@ -28,7 +28,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
-| [ ] | [TDR-020](TDR-020-lantern-paths.md) Lanterns from both sides and down the chain | S | none |
+| [x] | [TDR-020](TDR-020-lantern-paths.md) Lanterns from both sides and down the chain | S | none |
 | [ ] | [TDR-021](TDR-021-lantern-kinds-and-processions.md) Lantern kinds, Processions, streaks | M | 020, 004 |
 | [ ] | [TDR-022](TDR-022-litanies.md) Litanies | M | 004 |
 | [ ] | [TDR-023](TDR-023-currents.md) Currents | M | 004, 010 |
@@ -133,3 +133,6 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-013: verified in Chromium (`tests/e2e/backup.spec.js`): download under the header CSP, import from a file, restore. Not checked: Safari and iOS Safari downloads, Android Chrome, and the `file://` meta CSP path. Check the download by hand on iOS before relying on it.
 - TDR-013: Erase leaves one sealed backup (the import slot) so an erase can be undone. The Erase dialog says so. A player who wants every trace gone must also Discard it, which today means restoring or overwriting the slot; there is no "discard backup" button for sealed slots. Owner decision: add one, or accept.
 - TDR-013: the daily slot is chosen from the local calendar day of the last observed time, so a device in a different timezone on its next visit can rotate a day early or late. It is harmless.
+- TDR-020: verified in Chromium (`tests/e2e/lantern.spec.js`, screenshots written to the OS temp folder, not the repo): each path at 1280x800, rtl and drop at 390x844, tappable at 7 s. Hang stillness on the `drop` path was not measured numerically, only that it is inside the scene and tappable. Not checked: Safari and Firefox rendering of the individual `translate` property used for the bob (supported since Safari 14.1 and Firefox 72).
+- TDR-020: the welcome-back Whisper and the 8 second clamp fire on any credited absence of 600 seconds or more, including a long hidden tab, because the tab resuming goes through `away()`.
+- TDR-020: with `prefers-reduced-motion` the lantern still travels, as before. TDR-052 is the ticket for that.

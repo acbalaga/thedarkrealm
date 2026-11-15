@@ -71,6 +71,13 @@ window.TDR_DATA = (function () {
     { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 }
   ];
 
+  /* Stray Lantern paths and their weights. The interface picks one per lantern. */
+  var LANTERN_PATHS = [
+    { id: 'ltr', w: 35 },
+    { id: 'rtl', w: 35 },
+    { id: 'drop', w: 30 }
+  ];
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -161,6 +168,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();
