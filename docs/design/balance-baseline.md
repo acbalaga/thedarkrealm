@@ -246,3 +246,5 @@ Fathom    Duration   Present     Glass   Glass/h  Deepest
 
 End: 40 Unlightings, Sunshaft 209, 9860661 Nightglass, 5.0d present of 59.9d
 ```
+
+TDR-036 (90-day runs, columns elapsed, present, played): `casual` reaches Sunshaft 150 at 45.7 d (was 13.8 d), 175 at 45.8 d, 200 at 47.5 d, so 150 to 200 takes 1.8 d against a target of 10 to 30. `active` reaches 150 at 38.3 d (was 9.3 d) and 200 at 39.9 d. The sim policy buys the cheapest perk first and its 150 milestone now lands with "All perks", so the 6,200 Nightglass added by Older Than Lamps and The Patient Dark moves the whole endgame later. Not tuned: see the owner note in `docs/tickets/README.md`.
