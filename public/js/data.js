@@ -236,6 +236,60 @@ window.TDR_DATA = (function () {
       text: "At the top of the oldest shaft there was no lamp. There was a hole in a field, grown over, and a stone with a name worn off it. Your Host stood in daylight for the first time and cast nothing. It came home and reported that the surface is thin, and that most of the world is down here, and always was." }
   ];
 
+  /* Court chatter: one line, drawn at random from the denizens the player owns. Verbatim from docs/design/LORE_BIBLE.md section 5. */
+  var CHATTER = {
+    gleaner: [
+      "A Gleaner found a corner it had not raked. It is very pleased.",
+      "Two Gleaners are arguing over a hook. It is the same hook.",
+      "A Gleaner has brought you a handful of dark. It is slightly better than the usual dark."
+    ],
+    scribe: [
+      "A Scribe asks how you spell your name. You do not know. It writes that down.",
+      "The Scribes have run out of ink again. Nobody mentions where it went.",
+      "A Scribe corrected the Ledger. The old line is still legible underneath."
+    ],
+    weaver: [
+      "The Weavers have finished a curtain. It hangs across nothing.",
+      "A Weaver measured you for something and would not say what.",
+      "The looms have stopped. They start again when you look away."
+    ],
+    warden: [
+      "A Warden has moved one pace to the left. This is being discussed.",
+      "The Wardens are standing nearer the seat today.",
+      "A Warden looked up. The others pretended not to see."
+    ],
+    cantor: [
+      "The Cantors are holding the low note. Your teeth can feel it.",
+      "A Cantor came in early. Nobody has forgiven it.",
+      "The Cantors have stopped. The silence is in the same key."
+    ],
+    forge: [
+      "The Forge rang once on its own.",
+      "Something was hammered thicker in the night. It is not clear what it was before.",
+      "The anvil is cold to the touch and getting colder."
+    ],
+    tide: [
+      "The Tidewells are high. Something below is breathing in.",
+      "A bucket came up heavier than it went down, and empty.",
+      "The water in the cisterns leaned to one side for an hour."
+    ],
+    choir: [
+      "The Eclipse Choir has reached the bar they always stop at.",
+      "Forty voices breathed in together. Nothing followed.",
+      "The conductor asked the Scribes for a date."
+    ],
+    orchard: [
+      "A fruit fell in the Orchard. Nobody heard it land.",
+      "The Orchard has put out one more row. Nobody planted it.",
+      "A Gleaner was found asleep under a tree, holding a small night."
+    ],
+    sleeper: [
+      "The Sleeper turned over. The realm waited until it settled.",
+      "It said a word in its sleep. The Scribes did not write it down.",
+      "The Wardens have moved to the other side of the room again."
+    ]
+  };
+
   /* The Codex headings, in order. */
   var CODEX_CATS = [
     { id: 'realm', title: 'The Realm' }, { id: 'concord', title: 'The Concord' }, { id: 'queen', title: 'The Queen' },
@@ -247,6 +301,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, OBJECTIVES: OBJECTIVES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, OBJECTIVES: OBJECTIVES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

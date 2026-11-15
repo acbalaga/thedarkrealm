@@ -451,3 +451,8 @@ body.still .toast { animation: none; }
 details.entry > summary { cursor: pointer; font: 600 var(--t-lg) var(--serif); color: var(--ink); min-height: 44px; display: flex; align-items: center; gap: var(--s-2); }
 details.entry[open] > summary { margin-bottom: var(--s-1); }
 .new-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--badge); box-shadow: 0 0 8px var(--badge); flex: none; }
+
+/* whispers: chatter and lines kept from before */
+#log li.chatter { font-style: italic; color: var(--dim); }
+#log li.divider { text-align: center; font: var(--t-xs) var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); border-bottom: 0; }
+#log li.earlier-line { color: var(--dim); }

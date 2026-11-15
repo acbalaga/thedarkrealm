@@ -19,8 +19,9 @@
     monoNow: monoNow,
     random: function () { return Math.random(); },
     hidden: function () { return document.hidden === true; },
+    modalOpen: function () { return modalOpen; },
     prefersReducedMotion: function () { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); },
-    say: function (msg) { say(msg); },
+    say: function (msg, kind) { say(msg, kind); },
     storage: {
       get: function (k) { return localStorage.getItem(k); },
       set: function (k, v) { localStorage.setItem(k, v); },
@@ -92,14 +93,15 @@
   }
 
   var logLines = [];
-  function say(msg) {
+  /* kind: 'chatter' lines are dimmer. They are never announced (the log is not a live region). */
+  function say(msg, kind) {
     logLines.unshift(msg);
     if (logLines.length > 40) logLines.pop();
     var sw = $('strip-whisper');
     if (sw) sw.textContent = msg;
     var ul = $('log');
     if (!ul) return;
-    var li = el('li', null, msg);
+    var li = el('li', kind === 'chatter' ? 'chatter' : null, msg);
     ul.insertBefore(li, ul.firstChild);
     while (ul.children.length > 40) ul.removeChild(ul.lastChild);
   }
@@ -971,10 +973,13 @@
     var o2 = el('label', 'check'); var c2 = document.createElement('input'); c2.type = 'checkbox';
     o2.appendChild(c2); o2.appendChild(document.createTextNode(' Drifting motes and motion'));
     c2.onchange = function () { S.opts.motion = c2.checked; applyMotion(); };
+    var o4 = el('label', 'check'); var c4 = document.createElement('input'); c4.type = 'checkbox';
+    o4.appendChild(c4); o4.appendChild(document.createTextNode(' Court chatter in the Whispers'));
+    c4.onchange = function () { S.opts.chatter = c4.checked; };
     var o3 = el('label', 'check'); var c3 = document.createElement('input'); c3.type = 'checkbox';
     o3.appendChild(c3); o3.appendChild(document.createTextNode(' Keyboard shortcuts'));
     c3.onchange = function () { S.opts.keys = c3.checked; };
-    page.appendChild(o1); page.appendChild(o2); page.appendChild(o3);
+    page.appendChild(o1); page.appendChild(o2); page.appendChild(o4); page.appendChild(o3);
     page.appendChild(el('p', 'dim small', 'Keys: G Seat, R Realm, H Host, D Deep, L Ledger. Escape closes a dialog. On the Stillwell, Enter or Space gathers once per press.'));
 
     page.appendChild(el('h3', 'sub-head', 'Version'));
@@ -987,7 +992,7 @@
 
     return function () {
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
-      c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys;
+      c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys; c4.checked = S.opts.chatter;
       upBtn.hidden = !waitingWorker;
       refreshBackups();
       var stale = engine.backupStale(S.played, isInstalled(), S.exportedAt, wallNow());
@@ -1219,6 +1224,22 @@
 
   var wiping = false;
 
+  /* The last Whispers survive a reload, under their own key (not in the sealed save). What comes back from
+     storage is untrusted text: parseLog accepts only short strings, and they are shown as text. */
+  function saveLog() {
+    try { localStorage.setItem(engine.LOG_KEY, JSON.stringify(logLines.slice(0, 30).map(function (l) { return l.slice(0, 300); }))); } catch (e) {}
+  }
+  function restoreLog() {
+    var raw = null;
+    try { raw = localStorage.getItem(engine.LOG_KEY); } catch (e) {}
+    var lines = raw ? engine.parseLog(raw) : [];
+    if (!lines.length) return;
+    var ul = $('log');
+    ul.appendChild(el('li', 'divider', 'earlier'));
+    lines.forEach(function (l) { ul.appendChild(el('li', 'earlier-line', l)); });
+    logLines = lines.slice();
+  }
+
   var echoMeter = engine.rateMeter(60), meterAt = 0;
 
   function showAway(r) {
@@ -1273,6 +1294,7 @@
     $('modal').addEventListener('click', function (e) {
       if (e.target === $('modal') && modalQueue.length === 0) closeTopModal();
     });
+    restoreLog();
     var isNew = S.totalGloom === 0 && S.clicks === 0;
     engine.slowChecks();
     if (isNew) S.codexNew.waking = 1;
@@ -1292,7 +1314,8 @@
     }
     checkReminder();
     setInterval(checkReminder, 60000);
-    function keep() { if (!wiping) engine.save(); }
+    function keep() { if (!wiping) { engine.save(); saveLog(); } }
+    setInterval(function () { if (!wiping && !engine.halted) saveLog(); }, 15000);
     window.addEventListener('beforeunload', keep);
     window.addEventListener('pagehide', keep);            // the reliable one on phones and Home Screen apps
     document.addEventListener('visibilitychange', function () { if (document.hidden) keep(); else frame(); });

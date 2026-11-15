@@ -52,7 +52,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
 | [x] | [TDR-040](TDR-040-codex-v2.md) Codex: learned order, categories, new pages | S | 001 |
-| [ ] | [TDR-041](TDR-041-court-chatter.md) Court chatter and persistent Whispers | S | 001 |
+| [x] | [TDR-041](TDR-041-court-chatter.md) Court chatter and persistent Whispers | S | 001 |
 
 ### UI and UX
 
@@ -148,3 +148,4 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-051: Echo income for the "in 3m 20s" line is a rolling 60 second average sampled once a second while the page is running; it resets after an away credit or any gap over 5 seconds. Update rate for the underlines and times is capped at twice a second. The full suite of 30 browser tests passed once; one objective test is timing sensitive under load (fixed to retry its clicks).
 - TDR-040: all 24 pages from the lore bible are in `data.js` now, each with a `sys`. `LIVE_SYSTEMS` is `['core']`, so only the 25 original pages can unlock and count. Each later ticket adds its system name to that list (`sky`, `petitions`, `litanies`, `soundings`, `currents`, `vows`, `pane`, `elder`) and fills in the matching field of the facts object in `slowChecks()`. The Court pages sit in the `realm` category, as the ticket says. A hash of the original 25 pages' words is pinned in `tests/codex.test.js`.
 - TDR-040: tapping the Ledger while Codex pages are unread opens the Codex (one tap from the badge). Opening or closing a page's title counts as reading it; new pages start open. Not browser-tested beyond the existing axe run, which covers the Codex page.
+- TDR-041: chatter lines come verbatim from the lore bible (30 lines, 10 denizens). The simulator turns chatter off after loading, because chatter draws random numbers and the baseline (`docs/design/balance-baseline.md`) was built without it. The last 30 Whispers are kept under `thedarkrealm.log.v1` (outside the sealed save), written every 15 seconds and when the page is hidden, restored as plain text under an "earlier" divider. A line over 300 characters, a non-string entry or a non-array file is dropped, not repaired. The log is no longer a live region (TDR-051 did that), so chatter is never announced.

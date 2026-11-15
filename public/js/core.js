@@ -65,7 +65,9 @@
 
   /* env: { wallNow, monoNow, random, say, storage: { get, set, remove } } */
   function create(D, env) {
-    var wallNow = env.wallNow, monoNow = env.monoNow, say = env.say, store = env.storage;
+    var wallNow = env.wallNow, monoNow = env.monoNow, store = env.storage;
+    var lastSayAt = -1e9;     // monotonic ms of the latest Whisper, so chatter never crowds one
+    function say(msg, kind) { lastSayAt = monoNow(); env.say(msg, kind); }
 
     var S;                    // saved state
     var C = {};               // derived values, rebuilt every tick
@@ -104,7 +106,7 @@
         marks: 0,             // times the save failed its seal or its audit
         exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
         remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
-        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true },
+        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true },
         nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
@@ -182,6 +184,7 @@
       s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
       s.opts.keys = !own(o.opts, 'keys') || o.opts.keys !== false;
+      s.opts.chatter = !own(o.opts, 'chatter') || o.opts.chatter !== false;
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
       if (own(o, 'nav') && o.nav !== null && typeof o.nav === 'object') {
         // Page ids are free text of a safe shape: later pages are registered by the interface, not known here.
@@ -956,6 +959,49 @@
       return amount;
     }
 
+    /* ---------- court chatter ----------
+       One line every few minutes from a denizen the player owns, never repeating until the pool is spent.
+       The timer is not saved. It runs only while the page is visible and no dialog is open. */
+    var chatterIn = -1, usedChatter = {};
+    function chatterDelay(first) { return first ? 60 + env.random() * 60 : 150 + env.random() * 210; }
+
+    /* A line and the denizen it belongs to, or null when no owned denizen has one left. Marks it used. */
+    function pickChatter() {
+      var pool = [], pass, id;
+      for (pass = 0; pass < 2 && !pool.length; pass++) {
+        for (id in D.CHATTER) {
+          if (cnt(id) < 1) continue;
+          D.CHATTER[id].forEach(function (line) { if (!usedChatter[line]) pool.push({ id: id, line: line }); });
+        }
+        if (!pool.length) usedChatter = {};
+      }
+      if (!pool.length) return null;
+      var pick = pool[Math.floor(env.random() * pool.length)];
+      usedChatter[pick.line] = 1;
+      return pick;
+    }
+
+    function chatterStep(dt) {
+      if (!S.opts.chatter || S.played < 180) return;
+      if ((env.hidden && env.hidden()) || (env.modalOpen && env.modalOpen())) return;
+      if (chatterIn < 0) chatterIn = chatterDelay(true);
+      chatterIn -= dt;
+      if (chatterIn > 0) return;
+      if (monoNow() - lastSayAt < 5000) { chatterIn = 10; return; }          // a Whisper just landed: wait
+      var p = pickChatter();
+      chatterIn = chatterDelay(false);
+      if (p) say(p.line, 'chatter');
+    }
+
+    /* Whispers kept across a reload (the interface writes them under their own key). The text comes from
+       storage, so it is untrusted: only an array of short strings is accepted, at most 30. */
+    function parseLog(text) {
+      var a;
+      try { a = JSON.parse(text); } catch (e) { return []; }
+      if (!Array.isArray(a)) return [];
+      return a.filter(function (x) { return typeof x === 'string' && x.length > 0 && x.length <= 300; }).slice(0, 30);
+    }
+
     /* ---------- time ---------- */
 
     var slowTimer = 0, saveTimer = 0;
@@ -966,6 +1012,7 @@
       if (S.buffs.hush > 0) S.buffs.hush = Math.max(0, S.buffs.hush - dt);
       if (S.buffs.teeth > 0) S.buffs.teeth = Math.max(0, S.buffs.teeth - dt);
       // Lanterns neither spawn nor expire while the page is hidden. One already drifting is withdrawn.
+      chatterStep(dt);
       if (env.hidden && env.hidden()) { if (lantern) { lantern = null; S.lanternIn = 5; } }
       else if (lantern) { lantern.life -= dt; if (lantern.life <= 0) hideLantern(); }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
@@ -1197,7 +1244,7 @@
       shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours, bossMax: bossMax,
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
-      addSource: addSource, mods: mods, breakdown: breakdown,
+      addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
       rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },

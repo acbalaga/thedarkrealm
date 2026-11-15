@@ -186,6 +186,7 @@ function simulate(opts) {
   var e = core.create(core.D, env);
   e.load(); e.recalc(); e.start();
   seeding = false;
+  e.S.opts.chatter = false;      // chatter draws random numbers; the baseline was built without it
 
   var sim = {
     D: core.D, t: 0, present: 0, peak: 0, fathomStart: 0, fathomPresent: 0, fathoms: [],
