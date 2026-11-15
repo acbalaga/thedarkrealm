@@ -11,7 +11,7 @@ const CSS = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'style.c
    that really comes from the surface. See docs/design/UI_UX_GUIDE.md section 2. */
 const FROM_ABOVE = [
   /^\.lantern( span|::before)?$/, /^\.lantern\./, /^\.shaft-box\.boss$/, /^\.shaft-box\.boss \.shaft-title$/, /^\.bar-fill\.light$/, /^\.bar-btn\.dot-above \.dot$/,
-  /^\.toast\.k-sky$/, /^\.toast\.k-sky \.toast-title$/
+  /^\.toast\.k-sky$/, /^\.sky-strip$/, /^\.scene-box::before$/, /^\.toast\.k-sky \.toast-title$/
 ];
 
 function rules(css) {

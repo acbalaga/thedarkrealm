@@ -94,6 +94,21 @@ window.TDR_DATA = (function () {
       text: function () { return 'The realm is quiet.'; } }
   ];
 
+  /* The Surface Clock: the hours above, from the device's local time. A phase runs from `from` to `to`
+     (minutes after midnight; Night wraps past midnight). Starting values. */
+  var SKY = {
+    PHASES: [
+      { id: 'night', glyph: '\u263e', name: 'Night above', from: 1200, to: 300, effect: { gloom: 1.25 }, effectText: 'Gloom \u00d71.25',
+        line: 'The surface has gone to bed. The dark is running down the walls.' },
+      { id: 'dawn', glyph: '\u25d0', name: 'Dawn above', from: 300, to: 480, effect: { lanternRate: 2 }, effectText: 'Lanterns twice as often',
+        line: 'Change of shift above. The lamps are coming thick.' },
+      { id: 'day', glyph: '\u2600', name: 'Day above', from: 480, to: 1020, effect: { echo: 1.25 }, effectText: 'Echoes \u00d71.25',
+        line: 'Day above. The chains are busy.' },
+      { id: 'dusk', glyph: '\u25d1', name: 'Dusk above', from: 1020, to: 1200, effect: { lanternRate: 2 }, effectText: 'Lanterns twice as often',
+        line: 'Change of shift above. The lamps are coming thick.' }
+    ]
+  };
+
   /* Lantern kinds: chance in percent (they add to 100), life in seconds. Warden's Lamps fall back to Stray
      when no Lampwarden is being fought. Kinds unlock after 10 lanterns have been snuffed. */
   var LANTERNS = {
@@ -208,7 +223,7 @@ window.TDR_DATA = (function () {
       text: 'The Cantors finally said it. Ysmerel did not leave. She performed the first Unlighting alone, and the pressure of it made her the first Nightglass. Every shard you carry is a piece of the same pane. A Regent keeps the chair warm until the pane is whole.' },
     { id: 'firstlamp', cat: 'concord', sys: 'core', title: 'The First Lamp', when: function (f) { return f.best >= 150; },
       text: 'At the top of the last shaft there was no engine and no army. There was one small lamp on a kitchen table, the first the Concord ever lit, still burning shadow-tallow rendered from a shadow whose name the Ledger had kept on its oldest page. Your Host did not snuff it. It carried the flame down, and set it at the foot of the throne, and for the first time the seat cast a shadow of its own.' },
-    { id: "surfaceclock", cat: "sky", sys: "sky", title: "The Surface Clock", when: function (f) { return f.skyOpen >= 1; },
+    { id: "surfaceclock", cat: "sky", sys: "skyclock", title: "The Surface Clock", when: function (f) { return f.skyOpen >= 1; },
       text: "The Scribes have worked out the hours above from the lanterns. When the lamps come thick it is the change of shift. When the shafts go quiet the surface is asleep, and the dark runs down the walls with nothing to stop it. You have started keeping their hours. It is the only thing you have in common." },
     { id: "moonless", cat: "sky", sys: "sky", title: "The Moonless Night", when: function (f) { return f.sky.moonless >= 1; },
       text: "Once in every turn of the moon there is a night with nothing in the sky. The Concord doubles its watch. The Cantors hold one note until morning. Nightglass cut on that night comes out thicker, and nobody will say why." },
@@ -319,10 +334,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

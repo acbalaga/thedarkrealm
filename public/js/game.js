@@ -845,6 +845,7 @@
       ['Echoes recovered, all fathoms', function () { return fmt(S.echoesTotal); }],
       ['Unlightings', function () { return String(S.unlightings); }],
       ['The Ledger', function () { return S.marks ? S.marks + (S.marks === 1 ? ' irregularity noted' : ' irregularities noted') : 'In order'; }],
+      ['The surface', function () { var si = engine.skyInfo(wallNow()); return si.active ? si.name.replace(' above', '') + ', ' + si.effectText : 'Out of sight'; }],
       ['Away pace', function () { return Math.round(engine.awayPace() * 100) + '% for up to ' + engine.awayCapHours() + 'h'; }]
     ].map(function (d) {
       stats.appendChild(el('dt', null, d[0]));
@@ -1054,6 +1055,7 @@
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
+    paintSky();
     updateLitanies(); litanyChips();
     var rh = $('return-hint');
     if (rh && affordNow) {
@@ -1134,6 +1136,18 @@
         if (n.parentNode !== box) box.appendChild(n);
       } else if (n.parentNode) n.parentNode.removeChild(n);
     });
+  }
+
+  /* ---------- the Surface Clock ---------- */
+  var skyClass = '';
+  function paintSky() {
+    var si = engine.skyInfo(wallNow()), strip = $('sky-strip'), box = $('scene-box');
+    strip.hidden = !si.active;
+    var cls = si.active ? 'sky-' + si.id : '';
+    if (cls !== skyClass) { if (skyClass) box.classList.remove(skyClass); if (cls) box.classList.add(cls); skyClass = cls; }
+    if (!si.active) return;
+    var tx = si.glyph + ' ' + si.name + ' \u00b7 ' + si.effectText + ' \u00b7 ' + si.nextName + ' in ' + fmtTime(si.inSec);
+    if (strip.textContent !== tx) strip.textContent = tx;
   }
 
   /* ---------- the next objective ---------- */

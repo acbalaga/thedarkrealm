@@ -180,6 +180,7 @@ function altered(e) {
     codexSeq: 7, codexNew: { gloom: 1 },
     shaft: 12, shaftTop: 151, bestShaft: 150, shaftHp: e.shaftMaxHp(12) / 2, bossTime: 20, march: 0.1,
     autoAdvance: false, regroup: true, sealed: 1234,
+    sky: { phases: { night: 1, dawn: 1, day: 1, dusk: 1 } },
     lit: { teeth: { on: 4, cd: 100 }, breath: { on: 3, cd: 50 }, undertow: { on: 0, cd: 20 } }, litanyUses: 6,
     clicks: 500, lanterns: 12, lanternSpawns: 20, streak: 3, bestStreak: 5, processions: 1, wardenLamps: 2, played: 100000, runTime: 5000,
     buffs: { hush: 12, teeth: 7 },

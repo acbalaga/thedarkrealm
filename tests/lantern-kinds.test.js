@@ -192,8 +192,9 @@ test('the three new omens sit in the lantern set, after every earlier omen', () 
   const f = engine();
   const names = f.e.OMENS.filter((o) => o.set === 'Stray Lanterns snuffed').map((o) => o.name);
   assert.equal(names.join(), 'Snuffer,Wick-Thief,The Moths\' Revenge,A Line of Small Nights,Unbroken,Borrowed Light');
-  const lastTwo = f.e.OMENS.slice(-3).map((o) => o.name).join();
-  assert.equal(lastTwo, 'A Line of Small Nights,Unbroken,Borrowed Light');
+  const at = (n) => f.e.OMENS.findIndex((o) => o.name === n);
+  assert.ok(at('A Line of Small Nights') > at('Everyone Who Ever Held a Cup'), 'after the last of the original omens');
+  assert.equal(at('Unbroken'), at('A Line of Small Nights') + 1);
   assert.equal(f.e.OMENS.find((o) => o.name === 'Unbroken').cond(), false);
   f.e.S.bestStreak = 10;
   assert.equal(f.e.OMENS.find((o) => o.name === 'Unbroken').cond(), true);

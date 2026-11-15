@@ -39,7 +39,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
-| [ ] | [TDR-030](TDR-030-surface-clock.md) The Surface Clock | M | 004 |
+| [x] | [TDR-030](TDR-030-surface-clock.md) The Surface Clock | M | 004 |
 | [ ] | [TDR-031](TDR-031-almanac.md) The Almanac: moon, solstices, eclipses | L | 030 |
 | [ ] | [TDR-032](TDR-032-petitions-and-vigil.md) Petitions and the Vigil | M | 004, 010 |
 | [ ] | [TDR-033](TDR-033-soundings-and-relics.md) Soundings and Relics | L | 004, 010 |
@@ -156,3 +156,4 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-021: lantern omens were appended to the end of the omen list so existing omen ids did not move, and are grouped with the other lantern omens by set name. No Codex text was added.
 - TDR-022: baseline delta is in the change log. `idle` and `casual` did not move. `active` got slower because the simulator's cheapest-Rite rule now buys the new Rite of the Long Breath, which does nothing for Gloom; the Litanies are used by `active` as specified. Owner decision: teach the policy to skip Rites that do not feed the economy, or leave it. Litanies are hotkeys 1 to 3 and the three buttons sit on the Seat and the Sunshafts page. `litanies` is now a live Codex system.
 - TDR-022: a `step()` is cut where a Litany's effect ends, so one long step and many short ones give the same result. The Undertow pays 90 seconds of the rate without a Deep Hush. Away time never uses a Litany and takes the full away seconds off every cooldown.
+- TDR-030: baseline delta is in the change log. The sky source is switched off in unit tests with `env.sky === false` (the test helper does it unless a test asks), so no rule test depends on the hour it runs; the production page never passes it. The simulator pins `TZ=UTC` and starts its clock at midnight so runs are identical on every machine. The `surfaceclock` Codex page uses its own system name `skyclock` (live); the other sky pages keep `sky` for TDR-031. Not browser-tested beyond the existing axe and layout runs.

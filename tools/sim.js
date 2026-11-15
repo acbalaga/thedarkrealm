@@ -7,7 +7,8 @@ var path = require('path');
 var vm = require('vm');
 
 var JS = path.join(__dirname, '..', 'public', 'js');
-var WALL0 = 1.7e12;            // fixed start of the fake wall clock (ms)
+process.env.TZ = 'UTC';          // the Surface Clock reads local time: pin it so a run is the same on every machine
+var WALL0 = Date.UTC(2026, 0, 1);   // the fake wall clock starts at local midnight, so the policies meet a real day
 var STEP = 5;                  // seconds per present step (a Stray Lantern lasts 14, so every one is seen)
 var HOUR = 3600, DAY = 86400;
 

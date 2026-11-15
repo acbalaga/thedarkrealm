@@ -84,6 +84,7 @@ There are no purchases, accounts or leaderboards, and no server. Everything runs
 | Holding a key on the Stillwell or a Lantern | Only a fresh press of Enter or Space acts. Key repeat is ignored. |
 | The old unsealed v1 save | Read once, size-limited, marked as irregular, and rewritten as a sealed save at once. It is no longer read after 30 June 2027. |
 | Restoring an edited backup | Backups are sealed strings and go through the same seal check and audit as any save. An altered one is not listed or restorable. |
+| Setting the device clock to a favourable hour (Surface Clock) | Accepted. Each phase of the day is a bonus of similar size on a different channel, so no hour is worth faking for long, and winding the clock back triggers the existing debt rule. Sky bonuses apply only while the game is open, never to time away. Nothing reads a location or makes a request. |
 | Re-enabling a disabled button | Every purchase re-checks cost and unlock conditions in code. |
 
 Known limit: winding the device clock forward and leaving it there still earns one capped away credit per jump. With no server there is no trusted clock to compare against.

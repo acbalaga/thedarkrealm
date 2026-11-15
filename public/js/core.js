@@ -96,6 +96,7 @@
         codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
+        sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 } },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
@@ -174,6 +175,7 @@
         s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
       });
       s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
+      D.SKY.PHASES.forEach(function (p) { s.sky.phases[p.id] = o.sky && flag(o.sky.phases, p.id) ? 1 : 0; });
       s.played = num(o, 'played', 0, BIG, 0);
       s.runTime = num(o, 'runTime', 0, s.played, 0);
       s.clicks = int(o, 'clicks', 0, BIG, 0);
@@ -613,6 +615,12 @@
     OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'Borrowed Light', desc: 'Snuff a Warden\'s Lamp.', mono: true,
       cond: function () { return S.wardenLamps >= 1; }, prog: function () { return Math.min(1, S.wardenLamps); } });
 
+    [['night', 'Kept the Night', 'Be on the seat while it is night above.'], ['dawn', 'Saw Them Wake', 'Be on the seat at dawn.'],
+      ['day', 'Worked the Day Shift', 'Be on the seat in the day.'], ['dusk', 'Saw Them Sleep', 'Be on the seat at dusk.']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: p[1], desc: p[2], mono: false,
+        cond: function () { return !!S.sky.phases[p[0]]; }, prog: function () { return S.sky.phases[p[0]] ? 1 : 0; } });
+    });
+
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
         1e18: 'a quintillion', 1e21: 'a sextillion', 1e24: 'a septillion' };
@@ -669,6 +677,37 @@
     function availableUpgs() {
       return UPGS.filter(function (u) { return !S.upg[u.id] && u.show(); })
         .sort(function (a, b) { return a.cost - b.cost; });
+    }
+
+    /* ---------- the sky ----------
+       Which phase of the day it is for a local time, and when it ends. Pure: the time comes in. */
+    function phaseAt(ms) {
+      var d = new Date(ms), mod = d.getHours() * 60 + d.getMinutes(), P = D.SKY.PHASES, ph = P[0], i;
+      for (i = 0; i < P.length; i++) {
+        var f = P[i].from, t = P[i].to;
+        if (f < t ? (mod >= f && mod < t) : (mod >= f || mod < t)) ph = P[i];
+      }
+      var end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(ph.to / 60), ph.to % 60, 0, 0).getTime();
+      if (end <= ms) end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, Math.floor(ph.to / 60), ph.to % 60, 0, 0).getTime();
+      return { id: ph.id, endsAt: end, phase: ph };
+    }
+    function nextPhase(ph) { var P = D.SKY.PHASES; return P[(P.indexOf(ph) + 1) % P.length]; }
+
+    /* What the strip shows. active: the clock is unlocked and switched on. */
+    function skyInfo(ms) {
+      var p = phaseAt(ms), n = nextPhase(p.phase);
+      return { active: skyOn(), id: p.id, glyph: p.phase.glyph, name: p.phase.name, effectText: p.phase.effectText,
+        next: n.id, nextName: n.name.replace(' above', '').toLowerCase(), inSec: Math.max(0, (p.endsAt - ms) / 1000) };
+    }
+
+    var lastPhaseId = null;
+    /* While the player is present: note the phase as seen, and say when it changes. */
+    function skyStep() {
+      if (!skyOn()) { lastPhaseId = null; return; }
+      var p = phaseAt(wallNow());
+      if (lastPhaseId && lastPhaseId !== p.id) say(p.phase.line);
+      lastPhaseId = p.id;
+      S.sky.phases[p.id] = 1;
     }
 
     /* ---------- modifiers ----------
@@ -741,6 +780,13 @@
       if (p.queen) { out.gloom *= 5; out.might *= 5; out.echo *= 5; }
       if (p.further) { out.gloom *= 10; out.might *= 10; }
       return out;
+    });
+    /* The Surface Clock. Bonuses from the sky apply while the player is present and never to away pay.
+       env.sky === false switches them off (the tests do, so no rule depends on the hour they run). */
+    function skyOn() { return env.sky !== false && !!S.unlocked.shafts; }
+    addSource('sky', function (s, ctx) {
+      if (!ctx.present || env.sky === false || !s.unlocked.shafts) return null;
+      return phaseAt(ctx.wall).phase.effect;
     });
     addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
@@ -1142,6 +1188,7 @@
       if (S.buffs.teeth > 0) S.buffs.teeth = Math.max(0, S.buffs.teeth - dt);
       // Lanterns neither spawn nor expire while the page is hidden. One already drifting is withdrawn.
       chatterStep(dt);
+      skyStep();
       if (env.hidden && env.hidden()) { if (lanterns.length) { lanterns = []; procession = null; S.lanternIn = 5; } }   // withdrawn, not lost: the streak is kept
       else if (lanterns.length) {
         for (var li = lanterns.length - 1; li >= 0; li--) {
@@ -1281,7 +1328,7 @@
         total: S.totalGloom, denizens: totalDenizens(), den: {}, lanterns: S.lanterns, shaftsOpen: u.shafts,
         echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal,
         // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
-        skyOpen: 0, sky: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0, eclipse: 0 },
+        skyOpen: skyOn() ? 1 : 0, sky: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0, eclipse: 0 },
         petitions: 0, vigils: 0, litanies: S.litanyUses, soundings: 0,
         sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
         currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
@@ -1387,7 +1434,7 @@
     }
 
     /* The factors that make up a channel right now, by source, for the "Why" popover. */
-    var SOURCE_LABELS = { nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    var SOURCE_LABELS = { sky: 'The sky above', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
     function breakdown(channel) {
       var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
       SOURCES.forEach(function (src) {
@@ -1420,6 +1467,7 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
+      phaseAt: phaseAt, skyInfo: skyInfo,
       addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,
