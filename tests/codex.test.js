@@ -77,8 +77,8 @@ test('pages of systems that do not exist yet never unlock and are not counted as
   f.e.S.bestShaft = 210; f.e.S.shaftTop = 211; f.e.S.glassTotal = 5; f.e.S.unlightings = 1; f.e.S.played = 1e7;
   f.e.slowChecks();
   ['elder', 'root', 'pane', 'vows'].forEach((id) => assert.equal(f.e.S.codex[id], undefined, id));
-  assert.equal(f.e.codexLive().length, 43);
-  assert.ok(f.e.codexLive().every((c) => ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents'].includes(c.sys)));
+  assert.equal(f.e.codexLive().length, 44);
+  assert.ok(f.e.codexLive().every((c) => ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows'].includes(c.sys)));
 });
 
 test('the facts object offers zero defaults for later systems', () => {

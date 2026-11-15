@@ -42,6 +42,9 @@ Regenerate with `npm run sim -- --days 60 --seed 1`. Same seed, same output.
 | TDR-033 | Soundings and Relics | 15 min | 10.9 h | 25 min | 17.0 h |
 | TDR-025 | Bulk Rites and three automation perks | 15 min | see table | 25 min | see table |
 | TDR-023 | Currents | 15 min | see table | 25 min | see table |
+| TDR-024 | Vows and Keepings | 15 min | unchanged | 25 min | unchanged |
+
+TDR-024: the first-fathom milestones are untouched (vows start at the fourth Unlighting). **Every vow is completable**: both `casual` and `active` keep all six, one fathom each, within about a tenth of a day of each other (rows `Vow kept: ...` in the raw output), because after the fourth Unlighting a fathom with the Remembered Road and the other perks reaches the goal quickly. That also means the vows are cheap for this policy: the ticket's goals (30 to 70) may be too low for a late-game realm. Owner decision: raise the goals, or accept that the vows pay out within a few hours once unlocked.
 
 TDR-023: the policies choose Heavy after a fathom over six hours and otherwise the offered current with the highest Gloom times Might. Sunshaft 150 and all perks move by under 10 percent for both policies (casual 12.6 h and 12.1 h present, active 18.3 h and 18.0 h). The first fathom has no current, so the first Unlighting figures do not change.
 
@@ -100,52 +103,61 @@ Perk: Rites Remembered                         12.3d     11.1h     11.9d
 Perk: The Chamberlain                          13.3d     11.9h     12.9d
 Perk: Lantern-Hunger                           13.3d     11.9h     12.9d
 Perk: The Queen's Reflection                   13.3d     11.9h     12.9d
+Vow kept: Vow of Silence                       13.4d     12.0h     12.9d
 Perk: Further Down                             13.4d     12.1h     13.0d
 All perks                                      13.4d     12.1h     13.0d
+Vow kept: Vow of Empty Hands                   13.4d     12.1h     13.0d
+Vow kept: Vow of the Open Door                 13.4d     12.1h     13.0d
+Relic set: The Lamp Room                       13.5d     12.2h     13.1d
+Vow kept: Vow of Few                           13.5d     12.2h     13.1d
+Vow kept: Vow of the Short Chain               13.5d     12.2h     13.1d
+Vow kept: Vow of the Unlit                     13.5d     12.3h     13.1d
 Sunshaft 150                                   13.8d     12.6h     13.4d
-Relic set: The Drowned Table                   14.3d     12.8h     13.9d
-Relic set: The Lamp Room                       14.5d     13.2h     14.1d
-Relic set: The Queen's Things                  32.3d     29.3h     31.9d
-Relic set: The Sleeper's Bed                   46.4d     42.3h     45.9d
-All six relic sets                             46.4d     42.3h     45.9d
+Relic set: The Drowned Table                   13.9d     12.8h     13.5d
+Relic set: The Queen's Things                  29.4d     26.7h     28.9d
+Relic set: The Sleeper's Bed                   33.8d     30.9h     33.4d
+All six relic sets                             33.8d     30.9h     33.4d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
 1            11.9d     10.9h       452      1.58      109
 2             9.1h        8m        91     10.05      116
 3            23.9h       52m       968     40.42      119
 4             1.5h        5m      1429    952.67      129
-5             1.5h        5m      1594   1062.67      129
-6               2m        2m       923  22915.86      143
-7              88m        3m      3313   2269.61      143
-8             1.5h        5m      4320   2880.00      149
-9               2m        2m      2670  76896.00      149
-10             88m        3m      5961   4068.17      149
-11              4m        4m      4810  73685.11      149
-12             86m       65s      5578   3887.86      149
-13            1.5h        5m      7527   5018.00      149
-14            1.5h        5m      9659   6439.33      149
-15            1.5h        6m     10221   6726.80      159
-16            1.5h        8m     11924   7706.71      159
-17           41.9h       86m     67264   1604.07      179
-18            1.5h        8m     29278  18922.94      179
-19            4.5h       17m     34771   7672.42      179
-20           34.4h       60m     93659   2721.00      179
-21            9.0h       30m     59936   6659.56      179
-22           13.5h       20m     73676   5457.48      179
-23           15.1h       54m     86161   5720.76      179
-24           22.4h       46m    105002   4679.47      189
-25           24.1h       60m    128137   5321.49      189
-26           35.9h       65m    151486   4217.22      189
-27            2.3d      2.2h    180930   3350.56      189
-28            2.7d      2.3h    226939   3518.43      189
-29            3.4d      3.3h    262209   3178.29      189
-30            2.1d      1.9h    315768   6378.61      189
-31            3.5d      3.0h    381262   4538.98      189
-32            5.0d      4.6h    462174   3851.49      199
-33            5.0d      4.6h    579682   4830.68      199
-34            8.0d      7.3h    670613   3492.78      199
+5             1.5h        5m      1558   1038.67      129
+6               3m        3m      1005  24120.00      144
+7              88m        3m      3478   2384.91      144
+8               4m        4m      1801  28189.57      149
+9              86m       70s      4235   2948.94      149
+10            1.5h        5m      5934   3956.00      149
+11            1.5h        5m      8254   5502.67      149
+12            1.5h        5m      8794   5862.67      149
+13            1.5h        5m      9129   6086.00      149
+14            1.5h        5m     12790   8526.67      159
+15            1.5h        5m     13184   8789.33      159
+16            9.0h        5m     26118   2902.00      159
+17            1.5h        6m     22131  14538.61      166
+18            3.0h        9m     31638  10624.70      169
+19            3.0h       10m     34969  11656.33      169
+20            4.5h       15m     43151   9589.11      179
+21           12.0h       15m     68043   5670.25      179
+22            4.5h       17m     60505  13363.07      179
+23            7.5h       25m     73518   9793.33      179
+24           15.0h       25m     86641   5774.46      179
+25            7.5h       27m    106654  14144.57      179
+26           14.9h       20m    127377   8536.86      179
+27           24.0h       55m    151035   6292.40      189
+28           33.0h       85m    182056   5517.31      189
+29            2.6d      2.3h    217445   3451.51      189
+30           34.5h      1.5h    261176   7567.58      189
+31            2.6d      2.2h    316012   5017.06      199
+32            3.3d      3.2h    376577   4734.01      199
+33            3.6d      3.0h    467548   5471.42      199
+34            4.3d      4.1h    547170   5286.67      199
+35            4.2d      4.0h    655247   6515.73      199
+36            5.5d      4.8h    788457   5976.05      199
+37            9.0d      8.3h    945851   4378.94      199
 
-End: 34 Unlightings, Sunshaft 199, 3980387 Nightglass, 2.3d present of 59.9d
+End: 37 Unlightings, Sunshaft 199, 5662421 Nightglass, 2.3d present of 59.9d
 
 Policy active, 60 days, seed 1
 
@@ -175,55 +187,62 @@ Perk: Rites Remembered                          8.8d     17.3h      7.9d
 Perk: The Chamberlain                           8.8d     17.3h      7.9d
 Perk: Lantern-Hunger                            8.9d     17.5h      8.0d
 Perk: The Queen's Reflection                    8.9d     17.9h      8.1d
+Vow kept: Vow of Silence                        8.9d     17.9h      8.1d
+Vow kept: Vow of Empty Hands                    8.9d     18.0h      8.1d
 Perk: Further Down                              9.3d     18.0h      8.5d
 All perks                                       9.3d     18.0h      8.5d
+Vow kept: Vow of the Open Door                  9.3d     18.0h      8.5d
+Vow kept: Vow of Few                            9.3d     18.1h      8.5d
+Vow kept: Vow of the Short Chain                9.3d     18.2h      8.5d
+Vow kept: Vow of the Unlit                      9.3d     18.3h      8.5d
 Sunshaft 150                                    9.3d     18.3h      8.5d
 Relic set: The Drowned Table                   10.8d     21.0h      9.9d
-Relic set: The Lamp Room                       23.3d     46.0h     22.5d
-Relic set: The Queen's Things                  23.3d     46.0h     22.5d
-Relic set: The Sleeper's Bed                   27.3d      2.3d     26.5d
-All six relic sets                             27.3d      2.3d     26.5d
+Relic set: The Lamp Room                       21.8d     43.0h     20.9d
+Relic set: The Sleeper's Bed                   23.3d     46.0h     22.5d
+Relic set: The Queen's Things                  24.5d      2.0d     23.7d
+All six relic sets                             24.5d      2.0d     23.7d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
 1             8.8d     17.0h       427      2.03      109
 2              19m       19m       267    832.21      118
 3             2.7h       11m       372    138.85      118
 4              24m       24m       750   1914.89      119
-5               4m        4m       698  11168.00      129
-6            10.5h        3m      1876    177.89      129
-7               5m        5m      3250  36562.50      148
-8               4m        4m      4189  60321.60      149
-9               7m        7m      5524  50990.77      149
-10              5m        5m      4341  52974.92      155
-11              4m        4m      5036  77147.23      155
-12            3.6h        5m     13212   3684.21      159
-13             10m       10m      7995  46051.20      159
-14              6m        6m     13712 143081.74      159
-15            5.7h       14m     20459   3570.16      169
-16              8m        8m     17611 125543.76      169
-17             11m       11m     20209 108585.67      169
-18            2.7h       10m     27676  10351.54      169
-19           11.0h       30m     43622   3965.64      169
-20            4.0h       31m     38254   9540.31      169
-21            6.0h       31m     48813   8109.22      169
-22             22m       22m     56518 155316.64      169
-23           13.6h       36m     72321   5315.01      179
-24           10.0h       60m     81475   8147.50      179
-25            3.2h       44m     97984  30330.39      179
-26           15.3h       76m    118824   7783.94      179
-27           23.9h      1.9h    141809   5929.30      189
-28           24.1h      2.1h    171624   7134.48      189
-29           43.5h      3.0h    211948   4868.79      189
-30           28.0h      2.5h    249900   8925.00      189
-31           44.5h      4.0h    297034   6679.30      189
-32           36.9h      3.4h    355922   9633.62      189
-33            2.6d      5.0h    427164   6778.89      199
-34            3.0d      5.6h    513515   7175.06      199
-35            3.0d      6.1h    617462   8565.95      199
-36            4.4d      8.9h    738542   7038.11      209
-37            5.9d     11.5h    890313   6315.09      209
-38            4.6d      9.0h   1071817   9743.79      209
-39            9.0d     18.0h   1281976   5935.07      209
+5               4m        4m       703   9924.71      129
+6            10.5h        2m      1976    187.52      129
+7               5m        5m      3517  40842.58      149
+8               5m        5m      4650  62000.00      149
+9               7m        7m      5999  52674.15      149
+10             12m       12m      7726  38363.59      159
+11            3.5h       85s     12128   3441.92      159
+12             13m       13m      9879  44179.38      159
+13             11m       11m      9688  54495.00      161
+14            5.6h        6m     19508   3484.44      161
+15              4m        4m     15544 238120.85      161
+16              9m        9m     21735 140983.78      169
+17              7m        7m     25847 209099.33      169
+18              7m        7m     28662 264572.31      169
+19            2.8h       16m     36017  13050.95      169
+20           10.8h       20m     41085   3790.52      169
+21            4.2h       40m     49807  11957.67      179
+22            5.8h       18m     61276  10569.89      179
+23             24m       24m     71953 181776.00      179
+24           13.6h       36m     92625   6814.84      179
+25           10.0h       62m    105058  10473.80      179
+26           14.0h       58m    137786   9863.38      179
+27           13.1h      1.6h    153234  11717.13      189
+28           21.0h       88m    183762   8766.81      189
+29           38.0h      3.0h    221407   5832.47      189
+30           24.4h      2.4h    265697  10883.65      189
+31           33.6h      2.6h    320243   9534.59      189
+32            2.0d      4.3h    381944   7905.02      199
+33           38.2h      3.2h    458431  12014.35      199
+34            3.0d      5.9h    550868   7663.81      199
+35            2.4d      4.6h    660286  11453.91      199
+36            4.0d      8.0h    793120   8261.67      199
+37            4.0d      8.4h    950805   9865.54      209
+38            4.7d      9.3h   1141197  10032.26      209
+39            5.4d     11.2h   1370982  10608.58      209
+40            9.0d     17.7h   1643700   7620.89      209
 
-End: 39 Unlightings, Sunshaft 209, 7674441 Nightglass, 5.0d present of 59.9d
+End: 40 Unlightings, Sunshaft 209, 9860661 Nightglass, 5.0d present of 59.9d
 ```

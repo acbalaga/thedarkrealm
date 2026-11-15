@@ -255,6 +255,24 @@ window.TDR_DATA = (function () {
     { id: 'heavy', name: 'A Heavy Fathom', short: 'Heavy', line: 'The glass will be thicker. It will take longer to press.', boon: 'Nightglass from the Unlighting that ends it \u00d71.25.', bane: 'All Gloom \u00d70.7.', mods: { glass: 1.25, gloom: 0.7 } }
   ];
 
+  /* Vows: something given up for one fathom. Kept by sealing Sunshaft `goal` in that fathom. Names and lines
+     verbatim from docs/design/LORE_BIBLE.md section 8. Starting values. */
+  var VOWS = [
+    { id: 'hands', name: 'Vow of Empty Hands', line: 'The Stillwell is not to be touched.', rule: 'Gathering by hand yields nothing, and Bound Hands is inert.', goal: 40,
+      keeping: 'The Keeping of Hands', keepText: 'Gathering by hand \u00d72. Bound Hands has six shadows instead of four.', mods: { hand: 2 } },
+    { id: 'silence', name: 'Vow of Silence', line: 'No rite is to be performed.', rule: 'No Rite can be performed. Rites carried in still apply.', goal: 30,
+      keeping: 'The Keeping of Silence', keepText: 'Rites cost 10% less.', mods: { riteCost: 0.9 } },
+    { id: 'door', name: 'Vow of the Open Door', line: 'The lanterns are to pass unsnuffed.', rule: 'Lanterns appear but cannot be snuffed.', goal: 50,
+      keeping: 'The Keeping of the Door', keepText: 'Lanterns stay 6 seconds longer.', mods: { lanternLife: 20 / 14 } },
+    { id: 'chain', name: 'Vow of the Short Chain', line: 'The Lampwardens are to be given less time.', rule: 'The Lampwarden timer is 20 seconds.', goal: 60,
+      keeping: 'The Keeping of the Chain', keepText: 'Lampwarden timer +10 seconds.', mods: { bossTime: 10 } },
+    { id: 'few', name: 'Vow of Few', line: 'No more than fifty of any kind are to be bound.', rule: 'No more than 50 of any denizen.', goal: 50,
+      keeping: 'The Keeping of Few', keepText: 'Denizens cost 5% less.', mods: { cost: 0.95 } },
+    { id: 'unlit', name: 'Vow of the Unlit', line: 'The glass is to stay in its cloth.', rule: 'The +5% per Nightglass bonus is ignored.', goal: 70,
+      keeping: 'The Keeping of the Unlit', keepText: 'Nightglass gained \u00d71.1.', mods: { glass: 1.1 } }
+  ];
+  var VOW_LINES = { kept: 'The vow is kept. Something heavier was waiting at the bottom.', down: 'The vow is set down. Nothing is owed.' };
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -456,10 +474,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, CURRENTS: CURRENTS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

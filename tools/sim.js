@@ -167,6 +167,18 @@ function chooseCurrent(e, sim) {
   return best.id;
 }
 
+/* A vow whenever the last fathom's deepest shaft was 20 past its goal: the cheapest (lowest goal) one not yet kept. */
+var vowTries = {};
+function chooseVow(e) {
+  if (e.S.unlightings < 3) return undefined;
+  var best = null;
+  e.S.keepings && e.D_vows.forEach(function (v) {
+    if (e.S.keepings[v.id] || e.S.bestShaft < v.goal + 20) return;
+    if (!best || v.goal < best.goal) best = v;
+  });
+  return best ? best.id : undefined;
+}
+
 /* ---------- unlighting rule ---------- */
 function maybeUnlight(e, sim) {
   var S = e.S;
@@ -177,7 +189,7 @@ function maybeUnlight(e, sim) {
   if (g < 1 || rate > 0.7 * sim.peak) return false;
   if (S.unlightings > 0 && g < 0.2 * S.glassTotal) return false;
   var before = { t: sim.t, present: sim.present, played: S.played, shaft: S.bestShaft };
-  if (!e.unlight(chooseCurrent(e, sim))) return false;
+  if (!e.unlight(chooseCurrent(e, sim), chooseVow(e))) return false;
   sim.fathoms.push({
     n: S.unlightings, duration: sim.t - sim.fathomStart, present: sim.present - sim.fathomPresent,
     glass: g, deepest: before.shaft
@@ -209,6 +221,7 @@ function noteMilestones(e, sim) {
   var sets = 0;
   sim.D.RELIC_SETS.forEach(function (rs) { var done = e.setDone(rs.id); sets += done; mark('Relic set: ' + rs.name, !!done); });
   mark('All six relic sets', sets === 6);
+  sim.D.VOWS.forEach(function (v) { mark('Vow kept: ' + v.name, !!S.keepings[v.id]); });
 }
 
 /* ---------- run ---------- */
@@ -231,6 +244,7 @@ function simulate(opts) {
     storage: { get: function () { return null; }, set: function () {}, remove: function () {} }
   };
   var e = core.create(core.D, env);
+  e.D_vows = core.D.VOWS;
   e.D_depths = {}; core.D.SOUNDINGS.depths.forEach(function (d) { e.D_depths[d.id] = d; });
   e.load(); e.recalc(); e.start();
   seeding = false;

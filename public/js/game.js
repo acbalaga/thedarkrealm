@@ -168,6 +168,7 @@
     else if (ev.type === 'boss') toast({ kind: 'unlock', title: 'Lampwarden undone', text: ev.name, go: { dest: 'host', page: 'shaft' } });
     else if (ev.type === 'slack') toast({ kind: 'sounding', title: 'The line has gone slack', text: 'Something is tied to it.', go: { dest: 'host', page: 'soundings' } });
     else if (ev.type === 'relic') toast({ kind: 'sounding', title: 'From the Sea', text: ev.name, go: { dest: 'host', page: 'soundings' } });
+    else if (ev.type === 'keeping') toast({ kind: 'unlock', title: 'A vow is kept', text: ev.name, go: { dest: 'deep', page: 'vows' } });
     else if (ev.type === 'den') toast({ kind: 'unlock', title: 'Bound', text: ev.name, go: { dest: 'realm', page: 'den' } });
   }
 
@@ -352,6 +353,7 @@
       d.pages.forEach(mountPage);
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
+    addPage('deep', { id: 'vows', label: 'Vows', lock: 'vows', build: buildVows });
     addPage('host', { id: 'soundings', label: 'Soundings', lock: 'soundings', build: buildSoundings });
     addPage('ledger', { id: 'almanac', label: 'Almanac', lock: 'shafts', build: buildAlmanac });
     $('sky-strip').onclick = function () { goDest('ledger', 'almanac'); };
@@ -1151,6 +1153,7 @@
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
     paintSky();
+    paintVow();
     paintPetition();
     updateLitanies(); litanyChips();
     var rh = $('return-hint');
@@ -1288,11 +1291,70 @@
       b.appendChild(el('span', 'pet-text', c.name + '. ' + c.line));
       b.appendChild(el('span', 'pet-effect', 'Boon: ' + c.boon));
       b.appendChild(el('span', 'pet-effect', 'Bane: ' + c.bane));
-      b.onclick = function () { nextModal(); engine.unlight(c.id); render(); };
+      b.onclick = function () { nextModal(); if (S.unlightings >= 3) chooseVow(c.id, g); else { engine.unlight(c.id); render(); } };
       return b;
     });
     modal('Three currents', [h('p', null, ['Vesperdeep will sink a fathom. You will carry ', h('b', null, fmt(g)), ' new Nightglass. Choose the grain of the next fathom.']),
       h('div', { className: 'waiting' }, opts)], [{ label: 'Not yet' }], { required: true });
+  }
+
+  /* The second step, from the fourth Unlighting: a vow for the next fathom, or none. */
+  function chooseVow(currentId, g) {
+    var opts = D.VOWS.map(function (v) {
+      var b = el('button', 'btn current'); b.type = 'button';
+      b.appendChild(el('span', 'pet-text', v.name + '. ' + v.line));
+      b.appendChild(el('span', 'pet-effect', 'Rule: ' + v.rule));
+      b.appendChild(el('span', 'pet-effect', 'Kept by sealing Sunshaft ' + v.goal + '. ' + (S.keepings[v.id] ? 'Kept already: it pays nothing further.' : v.keeping + ': ' + v.keepText)));
+      b.onclick = function () { nextModal(); engine.unlight(currentId, v.id); render(); };
+      return b;
+    });
+    var none = el('button', 'btn current', 'No vow'); none.type = 'button';
+    none.onclick = function () { nextModal(); engine.unlight(currentId); render(); };
+    modal('Take a vow for this fathom?', [h('p', null, 'A thing given up on the way down is waiting, heavier, at the bottom. You may set it down at any time and owe nothing.'),
+      h('div', { className: 'waiting' }, opts.concat([none]))], [{ label: 'Not yet' }], { required: true });
+  }
+
+  var vowChip = el('span', 'buff'), VOW_PAGE = { hands: 'den', silence: 'rite', few: 'den', chain: 'shaft', door: 'seat' };
+  function paintVow() {
+    var box = $('buffs'), v = S.vow ? engine.vowDef(S.vow) : null, note = $('vow-note');
+    if (v) {
+      var tx = v.name + ' \u00b7 Sunshaft ' + S.vowGoal;
+      if (vowChip.textContent !== tx) vowChip.textContent = tx;
+      if (vowChip.parentNode !== box) box.appendChild(vowChip);
+    } else if (vowChip.parentNode) vowChip.parentNode.removeChild(vowChip);
+    var show = v && cur && VOW_PAGE[v.id] === cur.page.id;
+    note.hidden = !show;
+    if (show && note.textContent !== v.name + ': ' + v.rule) note.textContent = v.name + ': ' + v.rule;
+  }
+
+  function buildVows(page) {
+    page.appendChild(el('p', 'lede', 'A thing given up for one fathom. Keep the vow by sealing its Sunshaft and it is yours for good. Set it down at any time and nothing is owed.'));
+    var cards = D.VOWS.map(function (v) {
+      var c = el('div', 'row vow-card'), mid = el('div', 'row-mid');
+      var title = el('div', 'row-title'); title.appendChild(el('span', 'name', v.name));
+      var state = el('span', 'count'); title.appendChild(state);
+      mid.appendChild(title);
+      mid.appendChild(el('div', 'row-desc', v.line));
+      mid.appendChild(el('div', 'row-info', 'Rule: ' + v.rule + '  \u00b7  Kept by sealing Sunshaft ' + v.goal));
+      mid.appendChild(el('div', 'row-info', v.keeping + ': ' + v.keepText));
+      c.appendChild(mid); page.appendChild(c);
+      return { v: v, c: c, state: state };
+    });
+    var down = el('button', 'btn danger', 'Set down the vow'); down.type = 'button';
+    down.onclick = function () {
+      modal('Set down the vow?', h('p', null, 'It ends at once. Nothing is owed and nothing is kept.'),
+        [{ label: 'Keep it', primary: true }, { label: 'Set it down', danger: true, cb: function () { engine.setDownVow(); render(); } }]);
+    };
+    page.appendChild(down);
+    return function () {
+      cards.forEach(function (x) {
+        var kept = !!S.keepings[x.v.id], active = S.vow === x.v.id;
+        x.c.classList.toggle('kept', kept); x.c.classList.toggle('active-vow', active);
+        var tx = kept ? '\u2713 Kept' : active ? 'Sunshaft ' + Math.max(1, S.shaftTop - 1) + ' of ' + S.vowGoal : '';
+        if (x.state.textContent !== tx) x.state.textContent = tx;
+      });
+      down.hidden = !S.vow;
+    };
   }
 
   /* ---------- Soundings ---------- */

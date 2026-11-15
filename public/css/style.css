@@ -520,3 +520,8 @@ body.still .scene-box::before { transition: none; }
 .auto-toggle { margin-top: 2px; font-size: var(--t-xs); color: var(--dim); }
 
 .btn.current { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; font-weight: 400; width: 100%; }
+
+.vow-card.kept { border-color: var(--glass); }
+.vow-card.kept .count { color: var(--glass); }
+.vow-card.active-vow { border-color: var(--gloom); }
+.vow-note { margin: var(--s-2) var(--s-4) 0; }
