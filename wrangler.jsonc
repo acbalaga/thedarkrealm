@@ -1,0 +1,12 @@
+{
+  // The Dark Realm on Cloudflare Workers: static assets only, no Worker script.
+  // Deploy with `npx wrangler deploy` (or `npm run deploy`).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thedarkrealm",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    // Only what is inside public/ is ever published.
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}

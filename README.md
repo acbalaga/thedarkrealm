@@ -6,11 +6,11 @@ You are a shadow that woke without an owner, sitting on an empty throne in Vespe
 
 ## Play
 
-Open `index.html` in any modern browser. That is the whole install. It runs from `file://` with no server.
+Open `public/index.html` in any modern browser. That is the whole install. It runs from `file://` with no server.
 
 ### Add to Home Screen
 
-Installing as an app needs the folder served over https (a browser rule, not a game rule). GitHub Pages is enough: repo Settings, Pages, deploy from the branch root. Then:
+Installing as an app needs the game served over https (a browser rule, not a game rule). The repo is set up for Cloudflare Workers, see Deploy below. Once it is live:
 
 - **iPhone / iPad (Safari):** Share, Add to Home Screen.
 - **Android (Chrome):** menu, Install app (or Add to Home screen).
@@ -18,7 +18,32 @@ Installing as an app needs the folder served over https (a browser rule, not a g
 
 After the first visit the service worker has every file cached, so the installed app launches and plays with no connection. It opens full screen, respects the notch and home-indicator areas, and saves when it is sent to the background. An installed app keeps its own save, separate from the browser tab, so use Realm > Export save to carry progress across.
 
-Updates load in the background and apply on the next launch. Bump `CACHE` in `sw.js` when shipping changes.
+Updates load in the background and apply on the next launch. Bump `CACHE` in `public/sw.js` when shipping changes.
+
+## Deploy to Cloudflare Workers
+
+The game deploys as a static-assets Worker. There is no Worker script and nothing runs server-side. Only the contents of `public/` are published.
+
+One-off, from a terminal:
+
+```
+npm install
+npx wrangler login
+npm run deploy
+```
+
+Wrangler prints the live URL (`https://thedarkrealm.<your-subdomain>.workers.dev`). `npm run dev` serves the same build locally at `http://localhost:8787`.
+
+Or deploy on every push: in the Cloudflare dashboard go to Workers & Pages, Create, Import a repository, and pick this repo. The defaults work (deploy command `npx wrangler deploy`), because `wrangler.jsonc` carries the settings.
+
+| File | Purpose |
+| --- | --- |
+| `wrangler.jsonc` | Worker name, compatibility date, assets folder, 404 handling |
+| `public/_headers` | Security headers: CSP (with `frame-ancestors`), `nosniff`, no framing, no referrer, and `no-cache` on the service worker |
+| `public/404.html` | Not-found page |
+| `package.json` | Pins Wrangler and provides `dev` and `deploy` scripts. The game itself has no dependencies. |
+
+To use a custom domain, add it under the Worker's Settings, Domains & Routes. To rename the Worker, change `name` in `wrangler.jsonc`.
 
 ## How it works
 
@@ -52,7 +77,7 @@ Known limit: winding the device clock forward and leaving it there still earns o
 
 ## Security
 
-- A Content-Security-Policy allows scripts, styles and images from the game's own folder only. No inline script, no `eval`, no remote hosts, no forms.
+- A Content-Security-Policy allows scripts, styles and images from the game's own folder only. No inline script, no `eval`, no remote hosts, no forms. It is set in the page itself, and again as a response header on Cloudflare, where it also forbids embedding the game in another site.
 - Imported saves are size-limited, format-checked, and copied field by field against a fixed schema. Nothing is merged, so crafted keys such as `__proto__` are never touched.
 - All dynamic text is written with `textContent`. The few HTML strings are built from fixed text and formatted numbers.
 - The service worker handles same-origin GET requests only and stores only complete, successful, same-origin responses.
@@ -62,11 +87,13 @@ Known limit: winding the device clock forward and leaving it there still earns o
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Page shell |
-| `css/style.css` | All styling |
-| `js/data.js` | Denizens, upgrades, rites, perks, bosses, codex text |
-| `js/game.js` | Game loop, save/load, interface |
-| `sw.js`, `manifest.webmanifest` | Offline cache and install metadata when hosted |
-| `icon.svg`, `favicon.ico`, `icons/` | Logo, favicon, Home Screen and maskable icons |
+| `public/index.html` | Page shell |
+| `public/css/style.css` | All styling |
+| `public/js/data.js` | Denizens, upgrades, rites, perks, bosses, codex text |
+| `public/js/core.js` | Game rules: state, save integrity, economy, Sunshafts, lanterns, time. No browser access |
+| `public/js/game.js` | Interface: pages, rendering, input, boot |
+| `tests/` | `npm test`. Save, rules and time tests, with real saves in `tests/fixtures/` |
+| `public/sw.js`, `public/manifest.webmanifest` | Offline cache and install metadata when hosted |
+| `public/icon.svg`, `public/favicon.ico`, `public/icons/` | Logo, favicon, Home Screen and maskable icons |
 
-Balance numbers sit at the top of `js/game.js` and in `js/data.js`.
+Balance numbers sit at the top of `public/js/core.js` and in `public/js/data.js`.

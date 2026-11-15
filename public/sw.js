@@ -1,8 +1,10 @@
 /* Offline cache for The Dark Realm when served over http(s). Not used from file://.
-   Bump CACHE whenever a shipped file changes. */
-var CACHE = 'tdr-v2';
+   Bump CACHE whenever a shipped file changes.
+   The page is cached as './' and never as 'index.html': some hosts (Cloudflare) redirect
+   /index.html to /, and a redirected response cannot be replayed for a page load. */
+var CACHE = 'tdr-v4';
 var FILES = [
-  './', 'index.html', 'css/style.css', 'js/data.js', 'js/game.js', 'manifest.webmanifest',
+  './', 'css/style.css', 'js/data.js', 'js/core.js', 'js/game.js', 'manifest.webmanifest',
   'icon.svg', 'favicon.ico', 'icons/favicon-32.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'
 ];
@@ -27,12 +29,12 @@ self.addEventListener('fetch', function (e) {
   e.respondWith(caches.open(CACHE).then(function (cache) {
     return cache.match(req, { ignoreSearch: true }).then(function (hit) {
       var fresh = fetch(req).then(function (res) {
-        if (res && res.status === 200 && res.type === 'basic') cache.put(req, res.clone());
+        if (res && res.status === 200 && res.type === 'basic' && !res.redirected) cache.put(req, res.clone());
         return res;
       });
       if (hit) { e.waitUntil(fresh.catch(function () {})); return hit; }
       return fresh.catch(function () {
-        if (req.mode === 'navigate') return cache.match('index.html');
+        if (req.mode === 'navigate') return cache.match('./');
         return new Response('', { status: 504, statusText: 'Offline' });
       });
     });

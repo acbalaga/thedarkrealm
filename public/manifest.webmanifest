@@ -1,10 +1,10 @@
 {
-  "id": "./index.html",
+  "id": "./",
   "name": "The Dark Realm",
   "short_name": "Dark Realm",
   "description": "An offline idle game about keeping the dark quiet.",
   "lang": "en",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
