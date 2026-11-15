@@ -359,6 +359,7 @@
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
     addPage('ledger', { id: 'fathoms', label: 'Fathoms', lock: 'unlight', build: buildFathoms });
+    addPage('deep', { id: 'pane', label: 'The Pane', lock: 'pane', build: buildPane });
     addPage('deep', { id: 'vows', label: 'Vows', lock: 'vows', build: buildVows });
     addPage('host', { id: 'soundings', label: 'Soundings', lock: 'soundings', build: buildSoundings });
     addPage('ledger', { id: 'almanac', label: 'Almanac', lock: 'shafts', build: buildAlmanac });
@@ -1170,7 +1171,7 @@
     $('r-glass').textContent = fmt(S.glass);
     $('r-glassb').textContent = '+' + fmt(S.glassTotal * 5) + '%';
     var cdef = engine.currentDef(S.current);
-    $('fathom').textContent = 'Vesperdeep  ·  Fathom ' + (S.unlightings + 1) + (S.current !== 'still' ? '  ·  ' + cdef.short : '');
+    $('fathom').textContent = (S.pane.choice ? D.PANE.endings[S.pane.choice].title : 'Vesperdeep') + '  ·  Fathom ' + (S.unlightings + 1) + (S.current !== 'still' ? '  ·  ' + cdef.short : '');
     paintCurrentChip(cdef);
 
     applyNav();
@@ -1178,7 +1179,7 @@
     var unlReady = !viewing('unl') && ((S.unlightings === 0 && glassGain() >= 1) || engine.advisor().state === 'suggest');
     badge('realm', canWork);
     badge('ledger', engine.codexUnread() > 0 || (!viewing('set') && !!waitingWorker));
-    badge('deep', unlReady);
+    badge('deep', unlReady || (engine.paneUnseen() > 0 && !viewing('pane')));
     badge('host', engine.slackLines() > 0 && !viewing('soundings'));
     paintLineStatus();
     // The one gold badge: a lantern is passing while the player is somewhere that cannot show it.
@@ -1190,6 +1191,7 @@
     if (affordNow) refreshScene();
     paintSky();
     paintVow();
+    paintPane();
     SOUND.setDepth(S.unlightings + 1); SOUND.duck(S.buffs.hush > 0);
     paintPetition();
     updateLitanies(); litanyChips();
@@ -1469,6 +1471,85 @@
       } }, { label: 'Done', primary: true }]);
   }
 
+  /* ---------- The Pane ---------- */
+  var SVGNS = 'http://www.w3.org/2000/svg', paneLast = -1, paneShown = false, panePostponed = false;
+  function wedge(cx, cy, r0, r1, a0, a1) {
+    function pt(r, a) { return (cx + r * Math.cos(a)).toFixed(2) + ',' + (cy + r * Math.sin(a)).toFixed(2); }
+    return 'M' + pt(r0, a0) + ' L' + pt(r1, a0) + ' A' + r1 + ',' + r1 + ' 0 0 1 ' + pt(r1, a1) + ' L' + pt(r0, a1) + ' A' + r0 + ',' + r0 + ' 0 0 0 ' + pt(r0, a0) + ' Z';
+  }
+  function buildPane(page) {
+    var lights = D.PANE.lights;
+    page.appendChild(el('p', 'lede', 'Lay the shards out and they fit a window that is not here yet: twenty-four lights, leaded in black. Each light is lit by something you have done.'));
+    var count = el('p', 'pane-count');
+    page.appendChild(count);
+    var svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 200 200'); svg.setAttribute('class', 'pane-svg'); svg.setAttribute('aria-hidden', 'true');
+    var wedges = lights.map(function (l, i) {
+      var inner = i < 8, n = inner ? 8 : 16, k = inner ? i : i - 8, step = Math.PI * 2 / n, a0 = -Math.PI / 2 + k * step + 0.03, a1 = -Math.PI / 2 + (k + 1) * step - 0.03;
+      var p = document.createElementNS(SVGNS, 'path');
+      p.setAttribute('d', inner ? wedge(100, 100, 24, 58, a0, a1) : wedge(100, 100, 62, 94, a0, a1));
+      p.setAttribute('class', 'pane-light');
+      p.addEventListener('click', function () { show(i); });
+      svg.appendChild(p);
+      return p;
+    });
+    page.appendChild(svg);
+    var detail = el('p', 'pane-detail dim', 'Choose a light from the list to read what lights it.');
+    page.appendChild(detail);
+    var whole = el('button', 'btn primary', 'The pane is whole'); whole.type = 'button'; whole.hidden = true;
+    whole.onclick = function () { showPaneWhole(); };
+    page.appendChild(whole);
+    var list = el('ul', 'pane-list');
+    var items = lights.map(function (l, i) {
+      var li = el('li'), b = el('button', 'btn pane-item'); b.type = 'button';
+      var mark = el('span', 'omen-mark', '\u25cb '); mark.setAttribute('aria-hidden', 'true');
+      b.appendChild(mark); b.appendChild(el('span', 'name', l.name)); var pr = el('span', 'dim small pane-prog'); b.appendChild(pr);
+      b.onclick = function () { show(i); };
+      li.appendChild(b); list.appendChild(li);
+      return { b: b, mark: mark, pr: pr };
+    });
+    page.appendChild(list);
+    function show(i) {
+      var l = lights[i], p = engine.paneProgress(l), on = engine.paneLights()[i];
+      detail.textContent = l.name + ' \u00b7 ' + l.cond + (p ? ' \u00b7 ' + p[0] + ' of ' + p[1] : '') + (on ? ' \u00b7 lit' : ' \u00b7 not yet lit');
+    }
+    return function () {
+      var on = engine.paneLights(), n = 0;
+      on.forEach(function (b, i) {
+        if (b) n++;
+        wedges[i].setAttribute('class', 'pane-light' + (b ? ' lit' : ''));
+        wedges[i].style.fillOpacity = b ? (0.55 + 0.45 * ((i * 7) % 10) / 10).toFixed(2) : '';
+        items[i].mark.textContent = b ? '\u2713 ' : '\u25cb ';
+        var p = engine.paneProgress(lights[i]), tx = b ? 'lit' : (p ? p[0] + ' of ' + p[1] : '');
+        if (items[i].pr.textContent !== tx) items[i].pr.textContent = tx;
+        items[i].b.classList.toggle('lit', !!b);
+      });
+      count.textContent = n + ' of 24 lights. Gloom, Might and Echoes \u00d7' + Math.pow(D.PANE.factor, n).toFixed(2) + '.';
+      whole.hidden = !(n === 24 && !S.pane.choice);
+      engine.markPaneSeen();
+    };
+  }
+
+  function showPaneWhole() {
+    paneShown = true;
+    var line = function (c) { return { label: D.PANE.endings[c].button, cb: function () { confirmEnding(c); } }; };
+    modal('The Pane, Whole', D.PANE.whole.map(function (t) { return h('p', null, t); }),
+      [line('returned'), line('kept'), { label: 'Not yet', cb: function () { panePostponed = true; } }], { required: true });
+  }
+  function confirmEnding(choice) {
+    modal('This cannot be taken back.', h('p', null, D.PANE.endings[choice].button + '. The choice is permanent. Every bonus is kept either way.'),
+      [{ label: 'Not yet', cb: function () { panePostponed = true; } }, { label: 'Yes', primary: true, danger: true, cb: function (ev) { engine.chooseEnding(choice, true); render(); } }], { required: true });
+  }
+  /* New lights: a toast when one is lit while the game is open, a badge until the page has been looked at, and the ending when all are lit. */
+  function paintPane() {
+    var n = engine.paneCount();
+    if (paneLast >= 0 && n > paneLast) toast({ kind: 'unlock', title: 'A light is lit', text: n + ' of 24', go: { dest: 'deep', page: 'pane' } });
+    paneLast = n;
+    if (n === 24 && !S.pane.choice && !paneShown && !panePostponed && !modalOpen) showPaneWhole();
+    document.body.classList.toggle('ending-returned', S.pane.choice === 'returned');
+    document.body.classList.toggle('ending-kept', S.pane.choice === 'kept');
+  }
+
   /* ---------- Soundings ---------- */
   function clockTime(ms) { return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function paintLineStatus() {
@@ -1728,7 +1809,7 @@
   var motes = [], motesOn = false, sceneView = null, sceneSig = '', sceneFade = {}, sceneSeen = {};
   /* A snapshot of the state for the picture, rebuilt twice a second. A kind that has just been bound fades in over 350 ms. */
   function refreshScene() {
-    var v = SCENE.view({ unlightings: S.unlightings, den: S.den, ended: S.ended, shaft: S.shaft, shaftHp: S.shaftHp, shaftMax: engine.shaftMaxHp(S.shaft), autoAdvance: S.autoAdvance, paneLit: 0, choice: '' },
+    var v = SCENE.view({ unlightings: S.unlightings, den: S.den, ended: S.ended, shaft: S.shaft, shaftHp: S.shaftHp, shaftMax: engine.shaftMaxHp(S.shaft), autoAdvance: S.autoAdvance, paneLit: engine.paneCount(), choice: S.pane.choice },
       D.DENIZENS.map(function (d) { return d.id; }));
     v.kinds.forEach(function (k) { if (k.tier && !sceneSeen[k.id]) { sceneSeen[k.id] = true; if (sceneView) sceneFade[k.id] = monoNow(); } });
     sceneView = v;

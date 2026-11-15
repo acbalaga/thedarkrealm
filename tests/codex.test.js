@@ -30,7 +30,7 @@ test('the lore bible pages are all present', () => {
   ['surfaceclock', 'moonless', 'lidless', 'longestnight', 'longestday', 'balance', 'performance', 'petitions', 'litanies', 'vigil',
     'soundings', 'set_table', 'set_survey', 'set_loft', 'set_lamp', 'set_queen', 'set_bed', 'currents', 'vows', 'pane', 'pane_half', 'elder', 'bell', 'root']
     .forEach((id) => assert.ok(D.CODEX.some((c) => c.id === id), id));
-  assert.equal(D.CODEX.length, 49);
+  assert.equal(D.CODEX.length, 51);
 });
 
 test('pages come with the order they were learned in, and it survives a save', () => {
@@ -76,9 +76,9 @@ test('pages of systems that do not exist yet never unlock and are not counted as
   const f = engine();
   f.e.S.bestShaft = 210; f.e.S.shaftTop = 211; f.e.S.glassTotal = 5; f.e.S.unlightings = 1; f.e.S.played = 1e7;
   f.e.slowChecks();
-  ['elder', 'root', 'pane', 'vows'].forEach((id) => assert.equal(f.e.S.codex[id], undefined, id));
-  assert.equal(f.e.codexLive().length, 44);
-  assert.ok(f.e.codexLive().every((c) => ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows'].includes(c.sys)));
+  ['elder', 'root', 'vows'].forEach((id) => assert.equal(f.e.S.codex[id], undefined, id));
+  assert.equal(f.e.codexLive().length, 48);
+  assert.ok(f.e.codexLive().every((c) => ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows', 'pane', 'ending'].includes(c.sys)));
 });
 
 test('the facts object offers zero defaults for later systems', () => {

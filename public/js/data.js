@@ -273,6 +273,171 @@ window.TDR_DATA = (function () {
   ];
   var VOW_LINES = { kept: 'The vow is kept. Something heavier was waiting at the bottom.', down: 'The vow is set down. Nothing is owed.' };
 
+  /* The Pane: twenty-four lights, lit by what the player has done. Order is the drawing order, clockwise from the top. */
+  var PANE = {
+    factor: 1.03,
+    lights: [
+          {
+                "id": "p01",
+                "name": "The Shard You Woke With",
+                "cond": "glassTotal >= 1",
+                "kind": "glass"
+          },
+          {
+                "id": "p02",
+                "name": "The First Lamp",
+                "cond": "bestShaft >= 150",
+                "kind": "shaft"
+          },
+          {
+                "id": "p03",
+                "name": "Ten Fathoms",
+                "cond": "unlightings >= 10",
+                "kind": "fathoms"
+          },
+          {
+                "id": "p04",
+                "name": "All Settings",
+                "cond": "every perk owned",
+                "kind": "perks"
+          },
+          {
+                "id": "p05",
+                "name": "The Moths' Revenge",
+                "cond": "lanterns >= 100",
+                "kind": "lanterns"
+          },
+          {
+                "id": "p06",
+                "name": "A World Below",
+                "cond": "2,000 denizens at once",
+                "kind": "denizens"
+          },
+          {
+                "id": "p07",
+                "name": "The Keeping of Hands",
+                "cond": "vow kept: hands",
+                "kind": "keeping",
+                "key": "hands"
+          },
+          {
+                "id": "p08",
+                "name": "The Keeping of Silence",
+                "cond": "vow kept: silence",
+                "kind": "keeping",
+                "key": "silence"
+          },
+          {
+                "id": "p09",
+                "name": "The Keeping of the Door",
+                "cond": "vow kept: door",
+                "kind": "keeping",
+                "key": "door"
+          },
+          {
+                "id": "p10",
+                "name": "The Keeping of the Chain",
+                "cond": "vow kept: chain",
+                "kind": "keeping",
+                "key": "chain"
+          },
+          {
+                "id": "p11",
+                "name": "The Keeping of Few",
+                "cond": "vow kept: few",
+                "kind": "keeping",
+                "key": "few"
+          },
+          {
+                "id": "p12",
+                "name": "The Keeping of the Unlit",
+                "cond": "vow kept: unlit",
+                "kind": "keeping",
+                "key": "unlit"
+          },
+          {
+                "id": "p13",
+                "name": "The Drowned Table",
+                "cond": "all four relics of The Drowned Table",
+                "kind": "shelf",
+                "key": "table"
+          },
+          {
+                "id": "p14",
+                "name": "The Surveyor's Kit",
+                "cond": "all four relics of The Surveyor's Kit",
+                "kind": "shelf",
+                "key": "survey"
+          },
+          {
+                "id": "p15",
+                "name": "The Choir Loft",
+                "cond": "all four relics of The Choir Loft",
+                "kind": "shelf",
+                "key": "loft"
+          },
+          {
+                "id": "p16",
+                "name": "The Lamp Room",
+                "cond": "all four relics of The Lamp Room",
+                "kind": "shelf",
+                "key": "lamp"
+          },
+          {
+                "id": "p17",
+                "name": "The Queen's Things",
+                "cond": "all four relics of The Queen's Things",
+                "kind": "shelf",
+                "key": "queen"
+          },
+          {
+                "id": "p18",
+                "name": "The Sleeper's Bed",
+                "cond": "all four relics of The Sleeper's Bed",
+                "kind": "shelf",
+                "key": "bed"
+          },
+          {
+                "id": "p19",
+                "name": "Nothing in the Sky",
+                "cond": "a Moonless Night seen",
+                "kind": "moonless"
+          },
+          {
+                "id": "p20",
+                "name": "The Holiday",
+                "cond": "a Longest Night seen",
+                "kind": "longestnight"
+          },
+          {
+                "id": "p21",
+                "name": "Sung Through",
+                "cond": "an eclipse witnessed",
+                "kind": "eclipse"
+          },
+          {
+                "id": "p22",
+                "name": "A Month Below",
+                "cond": "30 vigils",
+                "kind": "vigils"
+          },
+          {
+                "id": "p23",
+                "name": "The Whole Ledger",
+                "cond": "every Codex page there is, before the endings",
+                "kind": "ledger"
+          },
+          {
+                "id": "p24",
+                "name": "Every Sign",
+                "cond": "every Omen there is, before the endings",
+                "kind": "signs"
+          }
+    ],
+    whole: ['The last light goes in and the window is a window.', 'She is on the other side of it, and she is not looking at the room. She is looking at you, the way a person looks at their own hand.', 'Every shadow belongs to something. You did not know whose you were because she was not there to be cast by. She is there now. The First Lamp is burning at the foot of the throne, and for the first time in an age, there is a light behind her.', 'The Cantors have stopped. The denizens are looking at the seat, and then at the glass, and then at you.'],
+    endings: { returned: { button: 'Give her the seat', title: "The Queen's Shadow", omen: 'Hers' }, kept: { button: 'Keep the chair', title: 'The Second Queen', omen: 'Yours' } }
+  };
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -410,7 +575,11 @@ window.TDR_DATA = (function () {
     { id: "bell", cat: "deep", sys: "elder", title: "The Drowned Bell", when: function (f) { return f.elderBell >= 1; },
       text: "It was cast to call people up out of a mine. It rang once too late and was thrown down the shaft after them. It still rings. Nothing comes up. The Gleaners find this restful." },
     { id: "root", cat: "deep", sys: "elder", title: "What Is Under the Seat", when: function (f) { return f.best >= 200; },
-      text: "At the top of the oldest shaft there was no lamp. There was a hole in a field, grown over, and a stone with a name worn off it. Your Host stood in daylight for the first time and cast nothing. It came home and reported that the surface is thin, and that most of the world is down here, and always was." }
+      text: "At the top of the oldest shaft there was no lamp. There was a hole in a field, grown over, and a stone with a name worn off it. Your Host stood in daylight for the first time and cast nothing. It came home and reported that the surface is thin, and that most of the world is down here, and always was." },
+    { id: "end_returned", cat: "deep", sys: "ending", title: "The Seat, Returned", when: function (f) { return f.end === 2; },
+      text: "You stood up. It was easier than you expected. The pane opened like a door that had only ever been closed from one side, and she sat, and the First Lamp threw her shadow across the floor of the throne room, long and patient, and you were in it. You were it. The denizens bowed. This time it was not to the chair." },
+    { id: "end_kept", cat: "deep", sys: "ending", title: "The Seat, Kept", when: function (f) { return f.end === 3; },
+      text: "You stayed where you were. She watched you decide. Then she nodded, once, the way a person nods at their own reflection when it has finally done something on its own, and the pane went dark from her side. The denizens waited a while. Then the first Gleaner bowed, and it was not to the chair, and it was not to her." }
   ];
 
   /* Court chatter: one line, drawn at random from the denizens the player owns. Verbatim from docs/design/LORE_BIBLE.md section 5. */
@@ -474,10 +643,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows', 'pane', 'ending'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PANE: PANE, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

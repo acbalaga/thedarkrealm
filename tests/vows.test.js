@@ -148,8 +148,9 @@ test('the six Keepings stay inside the budget: Gloom and Might are untouched, th
   const f = engine();
   f.e.S.unlightings = 10; f.e.S.keepings = { hands: 1, silence: 1, door: 1, chain: 1, few: 1, unlit: 1 };
   f.e.S.bestShaft = 100; f.e.recalc();
-  assert.equal(f.e.C.mods.gloom, 1);
-  assert.equal(f.e.C.mods.might, 1);
+  const pane = Math.pow(1.03, f.e.paneCount());          // each Keeping also lights a light of the Pane
+  assert.ok(Math.abs(f.e.C.mods.gloom / pane - 1) < 1e-9);
+  assert.ok(Math.abs(f.e.C.mods.might / pane - 1) < 1e-9);
   assert.ok(Math.abs(f.e.C.mods.glass - 1.1) < 1e-9);
   assert.ok(Math.abs(f.e.C.mods.cost - 0.95) < 1e-9);
   assert.ok(Math.abs(f.e.C.mods.riteCost - 0.9) < 1e-9);

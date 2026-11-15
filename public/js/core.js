@@ -101,6 +101,7 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        pane: { seen: {}, choice: '' },    // lights the player has been shown, and the ending chosen. Lights themselves are derived.
         runBest: 0, peak: { rate: 0, at: 0 }, fathomVow: '',   // deepest shaft sealed this fathom; best Nightglass per hour seen this fathom and when; the vow taken for it
         vow: '', vowGoal: 0, keepings: {},     // the vow taken for this fathom, the Sunshaft that keeps it, and the vows kept
         current: 'still', currentChoices: 0,   // the grain of this fathom, and how many times one was chosen
@@ -112,7 +113,7 @@
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
-        unlocked: { shafts: false, rites: false, unlight: false, soundings: false, vows: false },
+        unlocked: { shafts: false, rites: false, unlight: false, soundings: false, vows: false, pane: false },
         ended: false,
         seen: wallNow(),      // latest wall-clock time this realm has observed
         debt: 0,              // seconds of away time forfeited after the clock ran backwards
@@ -229,7 +230,7 @@
       s.buffs.hush = num(o.buffs, 'hush', 0, 200, 0);
       s.buffs.teeth = num(o.buffs, 'teeth', 0, 200, 0);
       s.lanternIn = num(o, 'lanternIn', 0, 150, 75);
-      ['shafts', 'rites', 'unlight', 'soundings', 'vows'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
+      ['shafts', 'rites', 'unlight', 'soundings', 'vows', 'pane'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
       s.ended = own(o, 'ended') && o.ended === true && s.bestShaft >= FINAL_SHAFT;
       s.seen = num(o, 'seen', 0, BIG, num(o, 'last', 0, now, now));   // `last` is the v1 field
       s.debt = num(o, 'debt', 0, 86400, 0);
@@ -259,6 +260,11 @@
         s.nav.dest = OLD_TABS[o.tab][0];
         s.nav.page[OLD_TABS[o.tab][0]] = OLD_TABS[o.tab][1];
       }
+      // The Pane's lights are derived. Its saved fields are only what was shown and the choice, and a choice
+      // is only believed while every light is lit.
+      D.PANE.lights.forEach(function (l) { if (o.pane && flag(o.pane.seen, l.id)) s.pane.seen[l.id] = 1; });
+      var c = own(o.pane, 'choice') ? o.pane.choice : '';
+      s.pane.choice = (c === 'returned' || c === 'kept') && paneCount(s) === D.PANE.lights.length ? c : '';
       if (audit(s) > 0) s.marks++;
       return s;
     }
@@ -711,6 +717,11 @@
     OMENS.push({ id: 'o' + OMENS.length, set: 'Vows', name: 'Six Things Set Aside', desc: 'Keep all six vows.', mono: true,
       cond: function () { var n = 0; for (var k in S.keepings) n++; return n >= 6; }, prog: function () { var n = 0; for (var k in S.keepings) n++; return n / 6; } });
 
+    D.PANE.lights.length && ['returned', 'kept'].forEach(function (ch) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The Pane', name: D.PANE.endings[ch].omen, desc: 'Choose ' + (ch === 'returned' ? 'to give her the seat.' : 'to keep the chair.') + ' Only one of the two can be earned.', mono: false,
+        cond: function () { return S.pane.choice === ch; }, prog: function () { return S.pane.choice === ch ? 1 : 0; } });
+    });
+
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
         1e18: 'a quintillion', 1e21: 'a sextillion', 1e24: 'a septillion' };
@@ -1032,6 +1043,12 @@
       return any ? out : null;
     });
     addSource('vow', function (s) { return s.vow === 'hands' ? { hand: 0 } : null; });
+    addSource('pane', function (s) {
+      var n = paneCount(s);
+      if (!n) return null;
+      var f = Math.pow(D.PANE.factor, n);
+      return { gloom: f, might: f, echo: f };
+    });
     addSource('current', function (s) { return D.CURRENTS.filter(function (c) { return c.id === s.current; })[0].mods; });
     addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
@@ -1690,6 +1707,7 @@
       }
       if (!u.soundings && cnt('tide') >= 1) { u.soundings = true; say('The Tidewells go down further than their ropes.'); emit('unlock', { what: 'Soundings', go: { dest: 'host', page: 'soundings' } }); }
       if (!u.vows && S.unlightings >= 3) u.vows = true;
+      if (!u.pane && S.glassTotal >= 1) u.pane = true;
       if (!u.rites && S.echoesTotal >= 1) {
         u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.');
         emit('unlock', { what: 'Rites', go: { dest: 'host', page: 'rite' } });
@@ -1741,7 +1759,7 @@
           longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
         petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), slack: slackLines() > 0, litanies: S.litanyUses, soundings: S.snd.done,
         sets: { table: setDone('table'), survey: setDone('survey'), loft: setDone('loft'), lamp: setDone('lamp'), queen: setDone('queen'), bed: setDone('bed') },
-        currents: S.currentChoices, vowsOpen: S.unlightings >= 3 ? 1 : 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
+        paneLit: paneCount(S), end: S.pane.choice === 'returned' ? 2 : S.pane.choice === 'kept' ? 3 : (S.ended ? 1 : 0), currents: S.currentChoices, vowsOpen: S.unlightings >= 3 ? 1 : 0, elderBell: 0
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
       D.CODEX.forEach(function (c) {
@@ -1784,12 +1802,64 @@
     /* Five plain lines about the realm, for the card and for copying. No save data. */
     function realmSummary() {
       var n = 0, k; for (k in S.omens) n++;
-      var lines = ['The Dark Realm', 'Regent of Vesperdeep' + (S.ended ? ', who carried the First Lamp down' : ''),
+      var lines = ['The Dark Realm', (S.pane.choice ? D.PANE.endings[S.pane.choice].title : 'Regent of Vesperdeep' + (S.ended ? ', who carried the First Lamp down' : '')),
         'Fathom ' + (S.unlightings + 1) + ', deepest Sunshaft sealed ' + S.bestShaft,
         fmt(S.glassTotal) + ' Nightglass earned, ' + n + ' omens' + (S.pet.count ? ', ' + S.pet.count + ' Vigils kept' : ''),
         fmtTime(S.played) + ' on the seat'];
       return lines;
     }
+
+    /* ---------- the Pane ----------
+       A light is lit when what justifies it is true. They are never stored as earned, so they cannot be forged on their own. */
+    function paneLights(s) {
+      var held = {}, k, ledger = true, signs = true;
+      D.CODEX.forEach(function (c) { if (c.sys !== 'ending' && D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0 && !s.codex[c.id]) ledger = false; });
+      OMENS.forEach(function (o) { if (o.name !== 'Hers' && o.name !== 'Yours' && !s.omens[o.id]) signs = false; });
+      function done(setId) { var all = D.RELICS.filter(function (r) { return r.set === setId; }); return all.every(function (r) { return s.relics[r.id]; }); }
+      function omenNamed(n) { for (var i = 0; i < OMENS.length; i++) if (OMENS[i].name === n) return !!s.omens[OMENS[i].id]; return false; }
+      return D.PANE.lights.map(function (l) {
+        switch (l.kind) {
+          case 'glass': return s.glassTotal >= 1;
+          case 'shaft': return s.bestShaft >= 150;
+          case 'fathoms': return s.unlightings >= 10;
+          case 'perks': return D.PERKS.every(function (p) { return s.perks[p.id]; });
+          case 'lanterns': return s.lanterns >= 100;
+          case 'denizens': return omenNamed('A Nation Below') && omenNamed('A World Below');
+          case 'keeping': return !!s.keepings[l.key];
+          case 'shelf': return done(l.key);
+          case 'moonless': return !!s.sky.seen.moonless;
+          case 'longestnight': return !!s.sky.seen.longestnight;
+          case 'eclipse': for (k in s.sky.eclipses) return true; return false;
+          case 'vigils': return s.pet.count >= 30;
+          case 'ledger': return ledger;
+          case 'signs': return signs;
+        }
+        return false;
+      });
+    }
+    function paneCount(s) { var n = 0; paneLights(s).forEach(function (b) { if (b) n++; }); return n; }
+    /* What the page shows for a light's progress, where it can be counted. */
+    function paneProgress(l) {
+      switch (l.kind) {
+        case 'fathoms': return [S.unlightings, 10];
+        case 'lanterns': return [S.lanterns, 100];
+        case 'denizens': return [totalDenizens(), 2000];
+        case 'vigils': return [S.pet.count, 30];
+        case 'shaft': return [S.bestShaft, 150];
+        case 'shelf': return [D.RELICS.filter(function (r) { return r.set === l.key && S.relics[r.id]; }).length, 4];
+        case 'perks': return [D.PERKS.filter(function (p) { return S.perks[p.id]; }).length, D.PERKS.length];
+      }
+      return null;
+    }
+    function chooseEnding(choice, trusted) {
+      if (trusted !== true || S.pane.choice || (choice !== 'returned' && choice !== 'kept') || paneCount(S) !== D.PANE.lights.length) return false;
+      S.pane.choice = choice;
+      say(choice === 'returned' ? 'You stood up. It was easier than you expected.' : 'You stayed where you were.');
+      afterChange();
+      return true;
+    }
+    function markPaneSeen() { paneLights(S).forEach(function (on, i) { if (on) S.pane.seen[D.PANE.lights[i].id] = 1; }); }
+    function paneUnseen() { var n = 0; paneLights(S).forEach(function (on, i) { if (on && !S.pane.seen[D.PANE.lights[i].id]) n++; }); return n; }
 
     /* ---------- the Night Report ---------- */
 
@@ -1878,7 +1948,7 @@
     }
 
     /* The factors that make up a channel right now, by source, for the "Why" popover. */
-    var SOURCE_LABELS = { keepings: 'Keepings', vow: 'A vow', current: 'This fathom\'s current', relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    var SOURCE_LABELS = { pane: 'The Pane', keepings: 'Keepings', vow: 'A vow', current: 'This fathom\'s current', relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
     function breakdown(channel) {
       var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
       SOURCES.forEach(function (src) {
@@ -1913,6 +1983,7 @@
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
       riteCostN: riteCostN, maxRite: maxRite,
       lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
+      paneLights: function () { return paneLights(S); }, paneCount: function () { return paneCount(S); }, paneProgress: paneProgress, chooseEnding: chooseEnding, markPaneSeen: markPaneSeen, paneUnseen: paneUnseen,
       advisor: advisor, rateNow: rateNow, realmSummary: realmSummary,
       vowDef: vowDef, setDownVow: setDownVow,
       currentOffer: currentOffer, currentDef: currentDef,

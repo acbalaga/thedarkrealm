@@ -96,6 +96,7 @@ function check(root, allow, options) {
     if (/\.js$/.test(rel) || /\.css$/.test(rel)) src = stripJsComments(src);
     if (/\.html$/.test(rel)) src = stripHtmlComments(src);
     src = src.replace(/xmlns(:\w+)?\s*=\s*["'][^"']*["']/g, '');
+    src = src.split('http://www.w3.org/2000/svg').join('');   // the SVG namespace is a name, not an address anything fetches
     src.split('\n').forEach(function (line, i) {
       if (/https?:\/\//i.test(line) || /["'(]\/\/[a-z0-9]/i.test(line)) fail('public/' + rel + ':' + (i + 1) + ': remote URL');
     });

@@ -209,6 +209,7 @@ function noteMilestones(e, sim) {
   }
   mark('First Sunshaft sealed', S.bestShaft >= 1);
   mark('First Rite', e.totalRites() >= 1);
+  [6, 12, 18, 24].forEach(function (n) { mark('Pane: ' + n + ' lights', e.paneCount() >= n); });
   mark('Unlighting first possible (yield >= 1)', S.unlightings >= 1 || e.glassGain() >= 1);
   mark('First Unlighting', S.unlightings >= 1);
   [10, 50, 100, 150].forEach(function (n) { mark('Sunshaft ' + n, S.bestShaft >= n); });

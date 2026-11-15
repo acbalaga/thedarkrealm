@@ -18,7 +18,8 @@ fixtures().forEach((fx) => {
     assert.equal(e.importText(fx.text).ok, true);
     e.recalc();
     const want = BEFORE[fx.name];
-    ['gps', 'click', 'might', 'echoMult'].forEach((k) => sig12(e.C[k], want[k], fx.name + ' ' + k));
+    const pane = Math.pow(1.03, e.paneCount());        // TDR-035 added a permanent x1.03 for each lit light of the Pane
+    ['gps', 'click', 'might', 'echoMult'].forEach((k) => sig12(e.C[k], want[k] * pane, fx.name + ' ' + k));
   });
 });
 
@@ -186,7 +187,7 @@ function altered(e) {
     clicks: 500, lanterns: 12, lanternSpawns: 20, streak: 3, bestStreak: 5, processions: 1, wardenLamps: 2, played: 100000, runTime: 5000,
     buffs: { hush: 12, teeth: 7 },
     lanternIn: 33,
-    unlocked: { shafts: true, rites: true, unlight: true, soundings: true, vows: true },
+    unlocked: { shafts: true, rites: true, unlight: true, soundings: true, vows: true, pane: true },
     vow: 'silence', vowGoal: 50, keepings: { hands: 1 },
     snd: { lines: [{ id: 'shelf', left: 1000 }], done: 5, dry: { shallows: 1, shelf: 2, trench: 3 } }, relics: { table1: 1, loft2: 1 },
     ended: true,
@@ -194,6 +195,7 @@ function altered(e) {
     opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false, buyRite: 10, vol: 65, amb: false, sfx: false, haptic: false },
     auto: { den: { gleaner: true }, rite: { edge: true } },
     current: 'narrow', currentChoices: 2, fathoms: [{ n: 1, current: 'loud', vow: 'hands', kept: true, sec: 100, glass: 3, best: 10 }],
+    pane: { seen: { p01: 1 }, choice: '' },
     runBest: 33, peak: { rate: 12.5, at: 900 }, fathomVow: 'hands',
     nav: { dest: 'ledger', page: { realm: 'work', host: 'rite', deep: 'vows', ledger: 'codex' } }
   };
@@ -204,7 +206,7 @@ test('schema round trip: every field of a new realm survives pack, unpack and ad
   const f = e.fresh();
   const alt = altered(e);
   leaves(f, '', []).forEach((p) => {
-    if (p === 'v' || p === 'lit.undertow.on') return;       // adopt ignores v by design; the Undertow is instant, so its `on` is always 0
+    if (p === 'v' || p === 'lit.undertow.on' || p === 'pane.choice') return;       // adopt ignores v by design; the Undertow is instant, so its `on` is always 0
     let a;
     try { a = at(alt, p); } catch (x) { a = undefined; }
     assert.notEqual(a, undefined, 'add a valid, non-default value for "' + p + '" to altered() in this test');

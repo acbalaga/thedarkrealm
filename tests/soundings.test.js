@@ -116,12 +116,13 @@ test('set completion applies its bonus once, and relics feed their stat', () => 
   const f = sea();
   const { D } = load();
   f.e.S.den = { tide: 1 }; f.e.recalc();
-  const echo0 = f.e.C.mods.echo;
+  const pane = () => Math.pow(1.03, f.e.paneCount());
+  const echo0 = f.e.C.mods.echo / pane();
   const table = D.RELICS.filter((r) => r.set === 'table');
   table.slice(0, 2).forEach((r) => { f.e.S.relics[r.id] = 1; }); f.e.recalc();
-  assert.ok(Math.abs(f.e.C.mods.echo / echo0 - 1.04) < 1e-9, 'two relics: +4 percent');
+  assert.ok(Math.abs(f.e.C.mods.echo / pane() / echo0 - 1.04) < 1e-9, 'two relics: +4 percent');
   table.slice(2).forEach((r) => { f.e.S.relics[r.id] = 1; }); f.e.recalc();
-  assert.ok(Math.abs(f.e.C.mods.echo / echo0 - 1.08 * 1.25) < 1e-9, 'four relics and the set');
+  assert.ok(Math.abs(f.e.C.mods.echo / pane() / echo0 - 1.08 * 1.25) < 1e-9, 'four relics and the set');
   assert.equal(f.e.setDone('table'), 1);
   assert.equal(f.e.OMENS.find((o) => o.name === 'The Drowned Table').cond(), true);
   const bed = D.RELICS.filter((r) => r.set === 'bed');

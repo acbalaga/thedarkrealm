@@ -538,3 +538,15 @@ body.still .scene-box::before { transition: none; }
 .fscroll { overflow-x: auto; }
 .seg.subnav { display: flex; flex-wrap: wrap; max-width: calc(100% - 2 * var(--s-4)); }
 .seg.subnav .seg-btn { flex: 1 1 auto; }
+
+/* the pane */
+.pane-count { font: 600 var(--t-md) var(--serif); color: var(--glass); }
+.pane-svg { width: min(100%, 320px); display: block; margin: var(--s-3) auto; }
+.pane-light { fill: var(--input); stroke: var(--line); stroke-width: 1; fill-opacity: 1; }
+.pane-light.lit { fill: var(--glass); stroke: var(--glass); }
+.pane-list { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: var(--s-1); }
+@media (min-width: 861px) { .pane-list { grid-template-columns: 1fr 1fr; } }
+.btn.pane-item { width: 100%; justify-content: flex-start; text-align: left; display: flex; gap: var(--s-2); align-items: baseline; font-weight: 400; }
+.btn.pane-item.lit { border-color: var(--glass); }
+.btn.pane-item .pane-prog { margin-left: auto; }
+.pane-detail { min-height: 2.4em; }

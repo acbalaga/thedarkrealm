@@ -106,8 +106,8 @@ test('an eclipse is witnessed once, gives +2 percent to Gloom, Might and Echoes,
   g.e.recalc();
   const h = engine({ sky: true, wall: at(2027, 8, 3, 12, 0) });
   h.e.S.unlocked.shafts = true; h.e.S.den = { choir: 1 }; h.e.recalc();
-  assert.ok(Math.abs(g.e.C.mods.gloom / h.e.C.mods.gloom - 1.02) < 1e-9);
-  assert.ok(Math.abs(g.e.C.mods.might / h.e.C.mods.might - 1.02) < 1e-9);
+  assert.ok(Math.abs(g.e.C.mods.gloom / h.e.C.mods.gloom - 1.02 * 1.03) < 1e-9, 'plus the Pane light an eclipse lights');
+  assert.ok(Math.abs(g.e.C.mods.might / h.e.C.mods.might - 1.02 * 1.03) < 1e-9);
   const on = onDay(at(2027, 8, 2, 12, 0));
   assert.equal(on.e.C.mods.den.choir, 10);
 });
