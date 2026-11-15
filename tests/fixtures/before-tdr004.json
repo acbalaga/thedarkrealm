@@ -1,0 +1,26 @@
+{
+  "fresh": {
+    "gps": 0,
+    "click": 1,
+    "might": 1,
+    "echoMult": 1
+  },
+  "mid-first-fathom": {
+    "gps": 5.356,
+    "click": 2.06,
+    "might": 38.4,
+    "echoMult": 1
+  },
+  "post-ending": {
+    "gps": 1902388627810877400,
+    "click": 154275428071001900,
+    "might": 611963487194621.2,
+    "echoMult": 378.56795512758055
+  },
+  "two-unlightings-perks": {
+    "gps": 8.814,
+    "click": 1.3559999999999999,
+    "might": 74.39999999999999,
+    "echoMult": 1
+  }
+}
