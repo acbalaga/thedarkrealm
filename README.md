@@ -90,8 +90,10 @@ Known limit: winding the device clock forward and leaving it there still earns o
 | `public/index.html` | Page shell |
 | `public/css/style.css` | All styling |
 | `public/js/data.js` | Denizens, upgrades, rites, perks, bosses, codex text |
-| `public/js/game.js` | Game loop, save integrity, interface |
+| `public/js/core.js` | Game rules: state, save integrity, economy, Sunshafts, lanterns, time. No browser access |
+| `public/js/game.js` | Interface: pages, rendering, input, boot |
+| `tests/` | `npm test`. Save, rules and time tests, with real saves in `tests/fixtures/` |
 | `public/sw.js`, `public/manifest.webmanifest` | Offline cache and install metadata when hosted |
 | `public/icon.svg`, `public/favicon.ico`, `public/icons/` | Logo, favicon, Home Screen and maskable icons |
 
-Balance numbers sit at the top of `public/js/game.js` and in `public/js/data.js`.
+Balance numbers sit at the top of `public/js/core.js` and in `public/js/data.js`.

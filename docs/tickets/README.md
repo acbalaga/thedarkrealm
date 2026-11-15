@@ -10,7 +10,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
-| [ ] | [TDR-001](TDR-001-core-extraction-and-tests.md) Extract rules into `core.js`, add tests | L | none |
+| [x] | [TDR-001](TDR-001-core-extraction-and-tests.md) Extract rules into `core.js`, add tests | L | none |
 | [ ] | [TDR-002](TDR-002-ci-and-supply-chain.md) CI, static guards, dependency hygiene | M | 001 |
 | [ ] | [TDR-003](TDR-003-balance-simulator.md) Balance simulator and baseline | M | 001 |
 | [ ] | [TDR-004](TDR-004-modifiers-and-seeded-rng.md) Modifier registry, seeded RNG, save scaffolding | M | 001 |
@@ -112,4 +112,6 @@ Within a wave, tickets on the same line can run in parallel sessions. Tickets on
 
 Use this section for anything a session discovers that needs the owner's decision (a balance result outside its target, an eclipse date that could not be verified, a gate in TDR-036 that said stop).
 
-- (none yet)
+- TDR-001: `maxBuy` can report one fewer than affordable when Gloom equals a denizen cost exactly (for example Hush-Warden, first one, k=4). The log estimate rounds down at the boundary and nothing corrects it upward. The shortfall is one bind and only on an exact match, so it was left alone (TDR-001 forbids behaviour changes). `tests/rules.test.js` pins the real contract: never over-reports, never more than one short. A fix is a one-line upward correction if the owner wants it.
+- TDR-001: `npm test` runs `node --test "tests/**/*.test.js"`, not `node --test tests/`. Node 22 no longer accepts a bare directory. The quoted glob works on Node 21 and later.
+- TDR-001: `core.js` also holds `fmt`, `fmtTime` and the Omen text helper, because the engine's own Whispers messages use them. The interface reads them from `engine`.
