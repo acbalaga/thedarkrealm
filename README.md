@@ -36,6 +36,12 @@ Wrangler prints the live URL (`https://thedarkrealm.<your-subdomain>.workers.dev
 
 Or deploy on every push: in the Cloudflare dashboard go to Workers & Pages, Create, Import a repository, and pick this repo. The defaults work (deploy command `npx wrangler deploy`), because `wrangler.jsonc` carries the settings.
 
+### Deploying safely
+
+- In the Cloudflare dashboard build settings, build with `npm ci` and deploy with `npx wrangler deploy`.
+- If deployment ever moves to GitHub Actions, use a Cloudflare API token scoped to Workers Scripts edit on this single account, stored as an Actions secret, in a separate workflow that runs only on the default branch after CI passes. No such workflow exists yet.
+- CI (`.github/workflows/ci.yml`) runs `npm test`, `npm run check` and `npm audit --audit-level=high` with read-only permissions and no secrets. `wrangler` is pinned to an exact version.
+
 | File | Purpose |
 | --- | --- |
 | `wrangler.jsonc` | Worker name, compatibility date, assets folder, 404 handling |

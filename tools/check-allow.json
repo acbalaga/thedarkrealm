@@ -1,0 +1,7 @@
+[
+  { "file": "public/js/game.js", "line": "$('modal-body').innerHTML = m.html;" },
+  { "file": "public/js/game.js", "line": "box.innerHTML = '';" },
+  { "file": "public/js/game.js", "line": "grid.innerHTML = '';" },
+  { "file": "public/js/game.js", "line": "list.innerHTML = '';" },
+  { "file": "public/js/game.js", "line": "if (bh !== lastBuff) { $('buffs').innerHTML = bh; lastBuff = bh; }" }
+]
