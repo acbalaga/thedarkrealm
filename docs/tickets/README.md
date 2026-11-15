@@ -12,7 +12,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | --- | --- | --- | --- |
 | [x] | [TDR-001](TDR-001-core-extraction-and-tests.md) Extract rules into `core.js`, add tests | L | none |
 | [x] | [TDR-002](TDR-002-ci-and-supply-chain.md) CI, static guards, dependency hygiene | M | 001 |
-| [ ] | [TDR-003](TDR-003-balance-simulator.md) Balance simulator and baseline | M | 001 |
+| [x] | [TDR-003](TDR-003-balance-simulator.md) Balance simulator and baseline | M | 001 |
 | [ ] | [TDR-004](TDR-004-modifiers-and-seeded-rng.md) Modifier registry, seeded RNG, save scaffolding | M | 001 |
 
 ### Security and integrity
@@ -116,3 +116,5 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-001: `npm test` runs `node --test "tests/**/*.test.js"`, not `node --test tests/`. Node 22 no longer accepts a bare directory. The quoted glob works on Node 21 and later.
 - TDR-001: `core.js` also holds `fmt`, `fmtTime` and the Omen text helper, because the engine's own Whispers messages use them. The interface reads them from `engine`.
 - TDR-002: the CI workflow could not be run from this session (no Actions access), so "CI is green on the PR" is unverified until a PR is opened. Action SHAs were taken from `git ls-remote` tags (checkout v4.3.1, setup-node v4.4.0). `wrangler` is pinned at 4.162.0, the version already in the lockfile. `tools/check-allow.json` holds the five current `innerHTML` lines for TDR-010 to empty.
+- TDR-003: `casual` can first Unlight (yield of 1 or more) after 15 minutes of presence, outside the 60 to 120 minute target in GDD section 8. The first fathom then lasts 10 days under the simulator's 70 percent rule because of the Lampwarden wall at Sunshafts 100 to 109. Owner decision needed: move the target, or retune the opening. No balance number was changed. Also: the `idle` policy never gets started because nothing earns Gloom before the first hand gather, and all 13 perks plus Sunshaft 150 are reached by day 12 (`casual`), well short of the Pane's 30 day floor. See `docs/design/balance-baseline.md`.
+- TDR-003: `tests/balance.test.js` guards the "first Unlighting possible" milestone over 3 days, not the rule-driven first Unlighting, because the rule-driven one falls on day 10 and cannot be reached in a 3 day run.
