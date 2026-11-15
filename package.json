@@ -1,0 +1,13 @@
+{
+  "name": "thedarkrealm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Dark Realm. An offline idle browser game. The game itself has no dependencies; Wrangler is only for deploying.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
