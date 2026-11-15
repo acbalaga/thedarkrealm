@@ -77,6 +77,7 @@ test('the Seat names a next objective once the player has found the well', { ski
   for (let i = 0; i < 40 && await page.locator('#objective').isHidden(); i++) { await page.click('#well'); await page.waitForTimeout(110); }   // the well accepts 14 a second
   await page.waitForSelector('#objective:not([hidden])');
   assert.equal(await page.locator('#well-hint').isHidden(), true);
+  await page.waitForFunction(() => document.querySelector('#objective').textContent.length > 0);
   assert.match(await page.textContent('#objective'), /bind a Wisp-Gleaner/);
   await page.locator('#objective').click();
   assert.match(await page.locator('#tabs button.active').textContent(), /Realm/);

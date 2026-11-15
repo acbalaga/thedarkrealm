@@ -96,7 +96,9 @@
         codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
-        sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 } },   // the phases of the day the player has been present for
+        // The sky: phases of the day seen, calendar events seen, eclipses witnessed. The clock cannot be trusted, so none of
+        // this can be audited; each reward is bounded instead (a phase is a bonus of similar size, eclipses cap at 10).
+        sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
@@ -176,6 +178,8 @@
       });
       s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
       D.SKY.PHASES.forEach(function (p) { s.sky.phases[p.id] = o.sky && flag(o.sky.phases, p.id) ? 1 : 0; });
+      Object.keys(s.sky.seen).forEach(function (k) { s.sky.seen[k] = o.sky && flag(o.sky.seen, k) ? 1 : 0; });
+      D.SKY.ECLIPSES.forEach(function (x) { if (o.sky && flag(o.sky.eclipses, x.id)) s.sky.eclipses[x.id] = 1; });
       s.played = num(o, 'played', 0, BIG, 0);
       s.runTime = num(o, 'runTime', 0, s.played, 0);
       s.clicks = int(o, 'clicks', 0, BIG, 0);
@@ -621,6 +625,14 @@
         cond: function () { return !!S.sky.phases[p[0]]; }, prog: function () { return S.sky.phases[p[0]] ? 1 : 0; } });
     });
 
+    [['moonless', 'Nothing in the Sky', 'See a Moonless Night.'], ['lidless', 'A Lamp Nobody Lit', 'See a Lidless Moon.'],
+      ['longestnight', 'The Holiday', 'Be on the seat on the Longest Night.'], ['longestday', 'Sun, Crossed Out', 'Be on the seat on the Longest Day.']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: p[1], desc: p[2], mono: false,
+        cond: function () { return !!S.sky.seen[p[0]]; }, prog: function () { return S.sky.seen[p[0]] ? 1 : 0; } });
+    });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: 'Sung Through', desc: 'Be on the seat during an eclipse.', mono: false,
+      cond: function () { return eclipseCount() >= 1; }, prog: function () { return eclipseCount() ? 1 : 0; } });
+
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
         1e18: 'a quintillion', 1e21: 'a sextillion', 1e24: 'a septillion' };
@@ -663,7 +675,7 @@
 
     function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n % 10 === 0 ? 6 : 1); }
     function shaftReward(n) {
-      return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult);
+      return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult * (n % 10 === 0 && C.lidless ? 2 : 1));
     }
     function shaftName(n) {
       if (n % 10 !== 0) return 'Sunshaft ' + n;
@@ -700,7 +712,82 @@
         next: n.id, nextName: n.name.replace(' above', '').toLowerCase(), inSec: Math.max(0, (p.endsAt - ms) / 1000) };
     }
 
-    var lastPhaseId = null;
+    /* ---- the moon and the calendar ---- */
+    function moonPhase(ms) {
+      var x = ((ms - D.SKY.MOON_REF) / (D.SKY.SYNODIC * 86400000)) % 1;
+      return x < 0 ? x + 1 : x;
+    }
+    function moonName(ph) { return D.SKY.MOON_NAMES[Math.floor(((ph + 1 / 16) % 1) * 8)]; }
+    function moonEvent(ms) {
+      var p = moonPhase(ms);
+      if (p < D.SKY.MOONLESS.lo || p > D.SKY.MOONLESS.hi) return 'moonless';
+      if (p >= D.SKY.LIDLESS.lo && p <= D.SKY.LIDLESS.hi) return 'lidless';
+      return null;
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function localDay(ms) { var d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    /* Calendar events on a local date: ids of the dated windows and of an eclipse. */
+    function datedEvents(ms) {
+      var d = new Date(ms), m = d.getMonth() + 1, day = d.getDate(), out = [], key = localDay(ms);
+      D.SKY.DATED.forEach(function (ev) {
+        ev.windows.forEach(function (w) { if (m === w[0] && day >= w[1] && day <= w[2]) out.push(ev.id); });
+      });
+      D.SKY.ECLIPSES.forEach(function (x) { if (x.date === key) out.push(x.id); });
+      return out;
+    }
+    function eclipseCount() { var n = 0; for (var k in S.sky.eclipses) n++; return n; }
+
+    /* Every temporary sky factor on a moment, multiplied per channel and capped (x3). extra: other temporary
+       factors that share the cap, such as a Petition's. */
+    function skyEffects(ms, extra) {
+      var out = {}, ev = datedEvents(ms), me = moonEvent(ms), list = [phaseAt(ms).phase.effect];
+      function add(o) { for (var k in o) out[k] = (out[k] || 1) * o[k]; }
+      list.forEach(add);
+      if (extra) add(extra);
+      D.SKY.DATED.forEach(function (d) { if (ev.indexOf(d.id) >= 0) add(d.effect); });
+      D.SKY.MOON_EVENTS.forEach(function (d) { if (d.id === me) add(d.effect); });
+      if (ev.some(function (id) { return id.charAt(0) === 'e'; })) add(D.SKY.ECLIPSE.effect);
+      for (var c in out) if (c !== 'den.choir' && out[c] > D.SKY.CAP) out[c] = D.SKY.CAP;
+      return out;
+    }
+
+    /* The next dated things after ms, soonest first: [{ id, name, at (ms of local midnight), days }]. */
+    function nextEvents(ms, count) {
+      var found = [], seen = {}, d0 = new Date(ms), i, day, t;
+      for (i = 1; i <= 800 && Object.keys(seen).length < 7; i++) {
+        t = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i, 12).getTime();
+        day = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i);
+        var prev = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i - 1, 12).getTime();
+        var begins = [];
+        var me = moonEvent(t); if (me && me !== moonEvent(prev)) begins.push(me);
+        datedEvents(t).forEach(function (id) { if (datedEvents(prev).indexOf(id) < 0) begins.push(id); });
+        begins.forEach(function (id) {
+          if (seen[id] && id.charAt(0) !== 'e') return;
+          seen[id] = 1;
+          var nm = id, k;
+          D.SKY.MOON_EVENTS.forEach(function (e) { if (e.id === id) nm = e.name; });
+          D.SKY.DATED.forEach(function (e) { if (e.id === id) nm = e.name; });
+          if (id.charAt(0) === 'e') nm = D.SKY.ECLIPSE.name;
+          found.push({ id: id, name: nm, at: day.getTime(), days: i });
+        });
+      }
+      return found.sort(function (a, b) { return a.at - b.at; }).slice(0, count || 6);
+    }
+
+    /* Everything the Almanac shows for a moment. */
+    function almanac(ms) {
+      var ph = moonPhase(ms), ev = [], me = moonEvent(ms), seenCount = {};
+      D.SKY.MOON_EVENTS.forEach(function (e) { if (e.id === me) ev.push({ id: e.id, name: e.name, effectText: e.effectText }); });
+      var dv = datedEvents(ms);
+      D.SKY.DATED.forEach(function (e) { if (dv.indexOf(e.id) >= 0) ev.push({ id: e.id, name: e.name, effectText: e.effectText }); });
+      dv.forEach(function (id) { if (id.charAt(0) === 'e') ev.push({ id: id, name: D.SKY.ECLIPSE.name, effectText: D.SKY.ECLIPSE.effectText }); });
+      return {
+        phase: skyInfo(ms), moon: ph, moonName: moonName(ph), events: ev, coming: nextEvents(ms, 6),
+        seen: S.sky.seen, eclipses: D.SKY.ECLIPSES.map(function (x) { return { id: x.id, date: x.date, type: x.type, seen: !!S.sky.eclipses[x.id] }; })
+      };
+    }
+
+    var lastPhaseId = null, lastEvents = null;    // null until the first look, so an event already under way is not announced as new
     /* While the player is present: note the phase as seen, and say when it changes. */
     function skyStep() {
       if (!skyOn()) { lastPhaseId = null; return; }
@@ -708,6 +795,22 @@
       if (lastPhaseId && lastPhaseId !== p.id) say(p.phase.line);
       lastPhaseId = p.id;
       S.sky.phases[p.id] = 1;
+      // Calendar events: seen once each, eclipses witnessed once each, a Whisper when one begins while the game is open.
+      var now = wallNow(), me = moonEvent(now), ids = datedEvents(now), all = (me ? [me] : []).concat(ids), key = all.join(',');
+      if (key !== lastEvents) {
+        all.forEach(function (id) {
+          if (lastEvents === null || lastEvents.split(',').indexOf(id) >= 0) return;
+          var line = null;
+          D.SKY.MOON_EVENTS.concat(D.SKY.DATED).forEach(function (e) { if (e.id === id) line = e.line; });
+          if (id.charAt(0) === 'e') line = D.SKY.ECLIPSE.line;
+          if (line) say(line);
+        });
+        lastEvents = key;
+      }
+      all.forEach(function (id) {
+        if (id.charAt(0) === 'e') { if (!S.sky.eclipses[id]) S.sky.eclipses[id] = 1; }
+        else S.sky.seen[id] = 1;
+      });
     }
 
     /* ---------- modifiers ----------
@@ -786,7 +889,14 @@
     function skyOn() { return env.sky !== false && !!S.unlocked.shafts; }
     addSource('sky', function (s, ctx) {
       if (!ctx.present || env.sky === false || !s.unlocked.shafts) return null;
-      return phaseAt(ctx.wall).phase.effect;
+      return skyEffects(ctx.wall);
+    });
+    // Eclipses witnessed are permanent: +2% each to Gloom, Might and Echoes, ten at most. They apply to away pay too.
+    addSource('eclipses', function (s) {
+      var n = 0, k;
+      for (k in s.sky.eclipses) n++;
+      var f = 1 + D.SKY.ECLIPSE.each * Math.min(D.SKY.ECLIPSE.max, n);
+      return n ? { gloom: f, might: f, echo: f } : null;
     });
     addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
@@ -818,6 +928,7 @@
       C.gps = C.denGps + M.autoHands * C.click;
       C.might = mightBase * M.might;
       C.echoMult = M.echo;
+      C.lidless = !!(ctx ? ctx.present : true) && skyOn() && moonEvent(wallNow()) === 'lidless';   // x2 Echoes from Lampwarden seals, while present
     }
 
     /* ---------- core actions ---------- */
@@ -1328,7 +1439,8 @@
         total: S.totalGloom, denizens: totalDenizens(), den: {}, lanterns: S.lanterns, shaftsOpen: u.shafts,
         echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal,
         // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
-        skyOpen: skyOn() ? 1 : 0, sky: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0, eclipse: 0 },
+        skyOpen: skyOn() ? 1 : 0, sky: { moonless: S.sky.seen.moonless, lidless: S.sky.seen.lidless, longestnight: S.sky.seen.longestnight,
+          longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
         petitions: 0, vigils: 0, litanies: S.litanyUses, soundings: 0,
         sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
         currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
@@ -1467,7 +1579,8 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
-      phaseAt: phaseAt, skyInfo: skyInfo,
+      phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,
+      skyEffects: skyEffects, nextEvents: nextEvents, almanac: almanac, eclipseCount: eclipseCount,
       addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,

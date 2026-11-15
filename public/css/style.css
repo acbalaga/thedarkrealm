@@ -139,7 +139,7 @@ main {
 @keyframes pulse { from { transform: scale(.9); opacity: 1; border-color: var(--gloom); } to { transform: scale(1.25); opacity: 0; } }
 
 .well-hint { position: absolute; left: 0; right: 0; bottom: 14px; margin: 0; text-align: center; color: var(--dim); font-size: var(--t-sm); font-style: italic; pointer-events: none; }
-#buffs { position: absolute; left: 10px; top: 42px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#buffs { position: absolute; left: 10px; top: 48px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .buff { background: rgba(91, 70, 201, .35); border: 1px solid var(--gloom); border-radius: 999px; padding: 2px 10px; font-size: var(--t-xs); }
 .buff.teeth { background: rgba(111, 214, 196, .18); border-color: var(--echo); }
 
@@ -484,7 +484,7 @@ details.entry[open] > summary { margin-bottom: var(--s-1); }
 .litany-chip { border-color: var(--gloom); }
 
 /* the Surface Clock: a quiet strip and a thin band of gold at the top edge, brightest by day, absent at night */
-.sky-strip { position: absolute; left: 8px; right: 8px; top: 8px; text-align: center; color: var(--above); font: var(--t-sm) var(--sans); pointer-events: none; }
+.sky-strip { position: absolute; left: 8px; right: 8px; top: 0; min-height: 44px; text-align: center; color: var(--above); font: var(--t-sm) var(--sans); background: none; border: 0; cursor: pointer; }
 .scene-box::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--above); opacity: 0; transition: opacity 1s; pointer-events: none; }
 .scene-box.sky-day::before { opacity: .55; }
 .scene-box.sky-dawn::before, .scene-box.sky-dusk::before { opacity: .3; }
@@ -492,3 +492,10 @@ details.entry[open] > summary { margin-bottom: var(--s-1); }
 .scene-box.sky-day { --sky-stop: var(--sky-day); }
 .scene-box.sky-dawn, .scene-box.sky-dusk { --sky-stop: var(--sky-twilight); }
 body.still .scene-box::before { transition: none; }
+
+/* almanac */
+.moon-box { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-2); }
+.moon { position: relative; flex: none; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: var(--glass); box-shadow: 0 0 18px rgba(201, 212, 255, .3); }
+.moon-shade { position: absolute; inset: 0; border-radius: 50%; background: var(--well); }
+.almanac-list { list-style: none; margin: 0 0 var(--s-3); padding: 0; }
+.almanac-list li { padding: 4px 0; font-variant-numeric: tabular-nums; }

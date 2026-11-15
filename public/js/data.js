@@ -97,6 +97,35 @@ window.TDR_DATA = (function () {
   /* The Surface Clock: the hours above, from the device's local time. A phase runs from `from` to `to`
      (minutes after midnight; Night wraps past midnight). Starting values. */
   var SKY = {
+    SYNODIC: 29.530588853,                       // days
+    MOON_REF: Date.UTC(2000, 0, 6, 18, 14),      // a new moon, 2000-01-06 18:14 UTC (JD 2451550.1)
+    MOON_NAMES: ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'],
+    MOONLESS: { lo: 0.034, hi: 0.966 }, LIDLESS: { lo: 0.466, hi: 0.534 },
+    // Local calendar windows, inclusive, northern calendar: [month 1-12, first day, last day].
+    DATED: [
+      { id: 'longestnight', name: 'The Longest Night', windows: [[12, 20, 22]], effect: { gloom: 2 }, effectText: 'Gloom \u00d72',
+        line: 'The Longest Night. The Gleaners have put down their hooks to listen.' },
+      { id: 'longestday', name: 'The Longest Day', windows: [[6, 20, 22]], effect: { echo: 2 }, effectText: 'Echoes \u00d72',
+        line: 'The Longest Day. The Scribes have drawn a sun and crossed it out.' },
+      { id: 'balance', name: 'The Balance', windows: [[3, 19, 21], [9, 21, 23]], effect: { gloom: 1.25, echo: 1.25 }, effectText: 'Gloom and Echoes \u00d71.25', line: null }
+    ],
+    MOON_EVENTS: [
+      { id: 'moonless', name: 'Moonless Night', effect: { glass: 1.1 }, effectText: 'Nightglass \u00d71.1 for an Unlighting', line: 'No moon tonight. The Cantors are holding one note.' },
+      { id: 'lidless', name: 'Lidless Moon', effect: {}, effectText: 'Echoes \u00d72 from Lampwardens', line: 'The moon is open. The Lampwardens are working by it.' }
+    ],
+    CAP: 3,                                      // no channel gets more than this from all temporary sky and petition factors together
+    ECLIPSE: { name: 'The Performance', effect: { 'den.choir': 10 }, effectText: 'Eclipse Choir \u00d710', line: 'The sun is covered. The Choir is singing it through.', each: 0.02, max: 10 },
+    /* Solar eclipses, by local calendar date. Checked against the NASA GSFC solar eclipse catalogue
+       (https://eclipse.gsfc.nasa.gov/SEdecade/SEdecade2021.html and SEdecade2031.html, and the yearly pages
+       OH2027 and OH2028) on 2026-11-15. A date from memory that could not be confirmed (2035-09-02) was left out. */
+    ECLIPSES: [
+      { id: 'e2027a', date: '2027-02-06', type: 'annular' }, { id: 'e2027b', date: '2027-08-02', type: 'total' },
+      { id: 'e2028a', date: '2028-01-26', type: 'annular' }, { id: 'e2028b', date: '2028-07-22', type: 'total' },
+      { id: 'e2030a', date: '2030-06-01', type: 'annular' }, { id: 'e2030b', date: '2030-11-25', type: 'total' },
+      { id: 'e2031a', date: '2031-05-21', type: 'annular' }, { id: 'e2031b', date: '2031-11-14', type: 'hybrid' },
+      { id: 'e2033a', date: '2033-03-30', type: 'total' }, { id: 'e2034a', date: '2034-03-20', type: 'total' },
+      { id: 'e2034b', date: '2034-09-12', type: 'annular' }, { id: 'e2035a', date: '2035-03-09', type: 'annular' }
+    ],
     PHASES: [
       { id: 'night', glyph: '\u263e', name: 'Night above', from: 1200, to: 300, effect: { gloom: 1.25 }, effectText: 'Gloom \u00d71.25',
         line: 'The surface has gone to bed. The dark is running down the walls.' },
@@ -334,7 +363,7 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,

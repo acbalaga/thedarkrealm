@@ -96,7 +96,7 @@ test('a Whisper marks a phase change while the game is open', () => {
   assert.ok(f.said.includes('Day above. The chains are busy.'));
 });
 
-test('the Surface Clock page unlocks with Sunshafts and is the only live sky page', () => {
+test('the Surface Clock page unlocks with Sunshafts', () => {
   const f = engine({ sky: true });
   f.e.S.codex = {};
   f.e.slowChecks();
@@ -104,7 +104,6 @@ test('the Surface Clock page unlocks with Sunshafts and is the only live sky pag
   f.e.S.unlocked.shafts = true;
   f.e.slowChecks();
   assert.ok(f.e.S.codex.surfaceclock);
-  assert.equal(f.e.codexLive().some((c) => c.id === 'moonless'), false);
 });
 
 test('phase flags are adopted against the four known ids only', () => {

@@ -350,6 +350,8 @@
       d.pages.forEach(mountPage);
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
+    addPage('ledger', { id: 'almanac', label: 'Almanac', lock: 'shafts', build: buildAlmanac });
+    $('sky-strip').onclick = function () { goDest('ledger', 'almanac'); };
     rovingKeys(tabs, '.tab', function (n) { n.click(); });
     rovingKeys($('subnav'), '.seg-btn', function (n) { n.click(); });
     if (wideQuery.addEventListener) wideQuery.addEventListener('change', function () { applyNav(); render(); });
@@ -803,6 +805,51 @@
         });
       }
       left.textContent = got < live.length ? (live.length - got) + (live.length - got === 1 ? ' page is' : ' pages are') + ' still dark.' : 'The codex is complete.';
+    };
+  }
+
+  /* The Almanac: today's sky, what is coming, what has been seen. The surface keeps a northern year. */
+  function buildAlmanac(page) {
+    page.appendChild(el('p', 'lede', 'The Scribes keep the sky for you. The surface above Vesperdeep keeps a northern year, and the hours are those of this device.'));
+    var moonBox = el('div', 'moon-box');
+    var disc = el('div', 'moon'), shade = el('div', 'moon-shade');
+    disc.appendChild(shade);
+    var moonText = el('div', 'moon-text');
+    moonBox.appendChild(disc); moonBox.appendChild(moonText);
+    page.appendChild(el('h3', 'sub-head', 'Today'));
+    page.appendChild(moonBox);
+    var eventsEl = el('ul', 'almanac-list');
+    page.appendChild(eventsEl);
+    page.appendChild(el('h3', 'sub-head', 'Coming'));
+    var coming = el('ul', 'almanac-list');
+    page.appendChild(coming);
+    page.appendChild(el('h3', 'sub-head', 'Seen'));
+    var seenEl = el('p', 'dim');
+    page.appendChild(seenEl);
+    var eclipses = el('ul', 'almanac-list');
+    page.appendChild(eclipses);
+    var sig = '';
+    function dateText(ms) { return new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' }); }
+    return function () {
+      var now = wallNow(), a = engine.almanac(now);
+      var s2 = String(Math.floor(now / 60000)) + ':' + Object.keys(S.sky.eclipses).join() + JSON.stringify(S.sky.seen);
+      if (s2 === sig) return;
+      sig = s2;
+      var x = a.moon < 0.5 ? -a.moon * 2 * 100 : (1 - (a.moon - 0.5) * 2) * 100;      // the shadow slides across the disc
+      shade.style.transform = 'translateX(' + x.toFixed(1) + '%)';
+      moonText.textContent = a.phase.name + '  \u00b7  ' + a.moonName;
+      eventsEl.replaceChildren();
+      if (!a.events.length) eventsEl.appendChild(el('li', 'dim', 'Nothing special in the sky today.'));
+      a.events.forEach(function (ev) { eventsEl.appendChild(el('li', null, ev.name + ' \u00b7 ' + ev.effectText)); });
+      coming.replaceChildren();
+      a.coming.forEach(function (c) { coming.appendChild(el('li', null, c.name + ' \u00b7 ' + dateText(c.at) + ' \u00b7 in ' + c.days + (c.days === 1 ? ' day' : ' days'))); });
+      var n = a.seen, kinds = [['moonless', 'Moonless Nights'], ['lidless', 'Lidless Moons'], ['longestnight', 'Longest Nights'], ['longestday', 'Longest Days'], ['balance', 'Balances']];
+      seenEl.textContent = kinds.map(function (k) { return k[1] + ': ' + (n[k[0]] ? 'seen' : 'not yet'); }).join('  \u00b7  ') + '  \u00b7  Eclipses witnessed: ' + engine.eclipseCount() + ' of ' + a.eclipses.length;
+      eclipses.replaceChildren();
+      a.eclipses.forEach(function (x2) {
+        var d = new Date(x2.date.slice(0, 4), Number(x2.date.slice(5, 7)) - 1, Number(x2.date.slice(8, 10))).getTime();
+        eclipses.appendChild(el('li', x2.seen ? '' : 'dim', (x2.seen ? '\u2713 ' : '\u25cb ') + dateText(d) + ' \u00b7 ' + x2.type));
+      });
     };
   }
 
