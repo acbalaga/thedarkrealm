@@ -5,9 +5,9 @@
    page asks it to apply, or until the next cold launch. The page is cached as './' and never as
    'index.html': some hosts (Cloudflare) redirect /index.html to /, and a redirected response cannot
    be replayed for a page load. */
-var CACHE = 'tdr-1ecd5e1cf5';
+var CACHE = 'tdr-d434895ba1';
 var FILES = [
-  './', 'css/style.css', 'js/data.js', 'js/core.js', 'js/nav.js', 'js/toast.js', 'js/sound.js', 'js/version.js', 'js/game.js', 'manifest.webmanifest',
+  './', 'css/style.css', 'js/data.js', 'js/core.js', 'js/nav.js', 'js/toast.js', 'js/sound.js', 'js/scene.js', 'js/version.js', 'js/game.js', 'manifest.webmanifest',
   'icon.svg', 'favicon.ico', 'icons/favicon-32.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'
 ];

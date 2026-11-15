@@ -2,8 +2,8 @@
 (function () {
   'use strict';
 
-  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create(), TOASTQ = window.TDR_TOAST.createQueue(5), SOUND = window.TDR_SOUND.create();
-  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; delete window.TDR_TOAST; delete window.TDR_SOUND; } catch (e) {}   // keep the tables and the rules out of console reach
+  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create(), TOASTQ = window.TDR_TOAST.createQueue(5), SOUND = window.TDR_SOUND.create(), SCENE = window.TDR_SCENE;
+  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; delete window.TDR_TOAST; delete window.TDR_SOUND; delete window.TDR_SCENE; } catch (e) {}   // keep the tables and the rules out of console reach
   var CLICK_CAP = 14;       // hand gathers accepted per second
   var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
   try { delete window.TDR_VERSION; } catch (e) {}
@@ -1187,6 +1187,7 @@
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
+    if (affordNow) refreshScene();
     paintSky();
     paintVow();
     SOUND.setDepth(S.unlightings + 1); SOUND.duck(S.buffs.hush > 0);
@@ -1724,14 +1725,37 @@
   }
 
   /* Motes drifting into the well. Purely decorative. */
-  var motes = [], motesOn = false;
+  var motes = [], motesOn = false, sceneView = null, sceneSig = '', sceneFade = {}, sceneSeen = {};
+  /* A snapshot of the state for the picture, rebuilt twice a second. A kind that has just been bound fades in over 350 ms. */
+  function refreshScene() {
+    var v = SCENE.view({ unlightings: S.unlightings, den: S.den, ended: S.ended, shaft: S.shaft, shaftHp: S.shaftHp, shaftMax: engine.shaftMaxHp(S.shaft), autoAdvance: S.autoAdvance, paneLit: 0, choice: '' },
+      D.DENIZENS.map(function (d) { return d.id; }));
+    v.kinds.forEach(function (k) { if (k.tier && !sceneSeen[k.id]) { sceneSeen[k.id] = true; if (sceneView) sceneFade[k.id] = monoNow(); } });
+    sceneView = v;
+    var box = $('scene-box'), t = v.tint;
+    box.style.setProperty('--depth-mid', t.mid); box.style.setProperty('--depth-edge', t.edge);
+    var sig = SCENE.signature(v);
+    if (!S.opts.motion && sig !== sceneSig) { sceneSig = sig; drawSceneFrame(0); }          // motion off: one static frame per change
+  }
+  function drawSceneFrame(ts) {
+    var cv = $('motes'), box = cv.parentNode, w = box.clientWidth, h = box.clientHeight;
+    if (!w || !sceneView) return;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    var fade = {}, now = monoNow();
+    Object.keys(sceneFade).forEach(function (id) { fade[id] = Math.min(1, (now - sceneFade[id]) / 350); });
+    SCENE.draw(ctx, w, h, ts / 1000, sceneView, fade, S.opts.motion);
+  }
   function applyMotion() {
     document.body.classList.toggle('still', !S.opts.motion);
     if (S.opts.motion && !motesOn) { motesOn = true; requestAnimationFrame(drawMotes); }
   }
   function drawMotes(ts) {
     var cv = $('motes');
-    if (!S.opts.motion) { motesOn = false; cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); return; }
+    if (!S.opts.motion) { motesOn = false; sceneSig = ''; refreshScene(); return; }
     requestAnimationFrame(drawMotes);
     if (document.hidden) return;
     var box = cv.parentNode, w = box.clientWidth, h = box.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -1739,6 +1763,11 @@
     var ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    if (sceneView) {
+      var fade = {}, nowT = monoNow();
+      Object.keys(sceneFade).forEach(function (id) { fade[id] = Math.min(1, (nowT - sceneFade[id]) / 350); });
+      SCENE.draw(ctx, w, h, ts / 1000, sceneView, fade, true);
+    }
     var want = 30 + Math.min(70, Math.floor(totalDenizens() / 4));
     var R = Math.max(w, h) * 0.6, cx = w / 2, cy = h * 0.46;
     while (motes.length < want) motes.push({ a: Math.random() * 6.283, r: Math.random() * R, s: 0.4 + Math.random() * 1.4, z: 0.6 + Math.random() * 1.6 });
