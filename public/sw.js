@@ -2,7 +2,7 @@
    Bump CACHE whenever a shipped file changes.
    The page is cached as './' and never as 'index.html': some hosts (Cloudflare) redirect
    /index.html to /, and a redirected response cannot be replayed for a page load. */
-var CACHE = 'tdr-v6';
+var CACHE = 'tdr-v7';
 var FILES = [
   './', 'css/style.css', 'js/data.js', 'js/core.js', 'js/game.js', 'manifest.webmanifest',
   'icon.svg', 'favicon.ico', 'icons/favicon-32.png', 'icons/icon-192.png', 'icons/icon-512.png',

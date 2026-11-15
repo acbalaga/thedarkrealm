@@ -1,0 +1,34 @@
+'use strict';
+/* A static server for the browser tests. It sends the headers from public/_headers. */
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+
+const PUB = path.join(__dirname, '..', '..', 'public');
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+
+function headersFor() {
+  const out = {};
+  let inAll = false;
+  fs.readFileSync(path.join(PUB, '_headers'), 'utf8').split('\n').forEach((line) => {
+    if (/^\S/.test(line) && !line.startsWith('#')) inAll = line.trim() === '/*';
+    else if (inAll && /^\s+\S+:/.test(line)) { const i = line.indexOf(':'); out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
+  });
+  return out;
+}
+
+function serve() {
+  const hdr = headersFor();
+  const srv = http.createServer((req, res) => {
+    let p = decodeURIComponent(req.url.split('?')[0]);
+    if (p === '/') p = '/index.html';
+    const f = path.join(PUB, p);
+    if (!f.startsWith(PUB) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404, hdr); res.end('no'); return; }
+    res.writeHead(200, Object.assign({ 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' }, hdr));
+    fs.createReadStream(f).pipe(res);
+  });
+  return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok(srv)));
+}
+
+module.exports = { serve, PUB };

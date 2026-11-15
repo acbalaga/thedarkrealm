@@ -73,10 +73,12 @@ There are no purchases, accounts or leaderboards, and no server. Everything runs
 | --- | --- |
 | Console access to game state or tables | State lives in a closure. No globals. Data tables are frozen and removed from `window`. |
 | Editing the save in localStorage or an export | Saves carry a keyed checksum. A save that fails it is refused on import and set aside on load (kept under `thedarkrealm.save.v2.rejected`, never deleted). |
-| Forging a save with a valid checksum | Every load is audited against the game's own bookkeeping: denizens, workings and rites must be affordable from Gloom and Echoes actually earned, Nightglass must come from Unlightings, perks from Nightglass, and lifetime totals must be reachable in the time played. Impossible values are removed and the Realm tab records an irregularity. |
+| Forging a save with a valid checksum | Every load is audited against the game's own bookkeeping: denizens, workings and rites must be affordable from Gloom and Echoes actually earned this fathom (Rites carried in by Rites Remembered are tracked separately), Nightglass must come from Unlightings, perks from Nightglass, and lifetime totals must be reachable in the time played. Impossible values are removed and the Realm tab records an irregularity. |
 | Scripted clicking | The Stillwell and Stray Lanterns only accept real input events, at most 14 gathers a second. |
 | Changing the device clock | Running time uses the monotonic clock, so the system clock cannot speed play. Time away is capped (8h, 24h with a perk) and paid at the away pace. Winding the clock back forfeits an equal amount of future away time. |
-| Two tabs on one save | The older tab stops and says so. |
+| Two tabs on one save | The older tab stops and says so, also when the other window erases the realm. |
+| Holding a key on the Stillwell or a Lantern | Only a fresh press of Enter or Space acts. Key repeat is ignored. |
+| The old unsealed v1 save | Read once, size-limited, marked as irregular, and rewritten as a sealed save at once. It is no longer read after 30 June 2027. |
 | Re-enabling a disabled button | Every purchase re-checks cost and unlock conditions in code. |
 
 Known limit: winding the device clock forward and leaving it there still earns one capped away credit per jump. With no server there is no trusted clock to compare against.

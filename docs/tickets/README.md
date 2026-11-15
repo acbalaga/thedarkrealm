@@ -20,7 +20,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
 | [x] | [TDR-010](TDR-010-dom-sinks-trusted-types-headers.md) Remove HTML sinks, Trusted Types, headers | M | none |
-| [ ] | [TDR-011](TDR-011-save-integrity-gaps.md) Save and input integrity gaps | S | 001 |
+| [x] | [TDR-011](TDR-011-save-integrity-gaps.md) Save and input integrity gaps | S | 001 |
 | [ ] | [TDR-012](TDR-012-service-worker-atomic-updates.md) Service worker, atomic versions, update prompt | M | 002 |
 | [ ] | [TDR-013](TDR-013-save-durability-and-backups.md) Backups, file export, durability | M | 001, 010 |
 
@@ -124,3 +124,6 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-004: cost functions read the folded modifiers cached by `recalc()`. Code that edits `S.perks` or `S.rites` directly must call `recalc()` before asking for a cost (two existing tests were updated for this). Game code always goes through the buy functions, which do.
 - TDR-010: the browser test is `tests/e2e/csp.spec.js`, run with `npm run e2e`. It is not in `npm test` or CI because it needs Playwright. It passed here under Chromium with the header CSP, including the `document.body.innerHTML` probe that Trusted Types must refuse. Firefox and Safari were not checked, and Safari's support for `require-trusted-types-for` is limited (it ignores the directive, so the check is defence in depth there, not a regression). The service worker registration on https was not exercised (the test server is plain http on localhost, where `register` still runs but its result is not asserted).
 - TDR-010: a unit test of `h()` was not added because `h` lives inside the `game.js` closure. The e2e test covers it through the Import error text.
+- TDR-011: Rites Remembered only matters for the audit through `ritesKept`. A save from before `runEchoes` existed has its current Rites treated as carried in, so the new check starts tracking from that load and cannot flag an honest old save. The fixture saves load with zero repairs. The Rite-spend check now also runs when Rites are partly kept, replacing the old check that only ran before the first Unlighting.
+- TDR-011: an oversized v1 save is moved to `thedarkrealm.save.v1.unreadable` rather than deleted, in the same spirit as the v2 `.rejected` key. Keys under `.retired` and `.unreadable` are never read and are not removed by Erase.
+- TDR-011: key repeat was tested in Chromium only. Browsers differ in whether `preventDefault` on a repeated Enter keydown stops the click, so check Firefox and Safari by hand.

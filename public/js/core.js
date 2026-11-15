@@ -7,6 +7,7 @@
   var KEY = 'thedarkrealm.save.v2';
   var OLD_KEY = 'thedarkrealm.save.v1';
   var SAVE_TAG = 'TDR2';
+  var LEGACY_UNTIL = Date.UTC(2027, 5, 30, 23, 59, 59);   // 2027-06-30: after this the v1 save is retired, not read
   var MAX_SAVE = 200000;    // characters; a real save is a few KB
   var CLICK_CAP = 14;       // hand gathers accepted per second (the interface enforces it)
   var BIG = 1e300;
@@ -78,7 +79,7 @@
         seed: seed === undefined ? newSeed() : seed,   // fixes the daily and per-fathom rolls, see rng()
         born: wallNow(),      // wall time this realm began. Informational only, nothing may depend on it
         gloom: 0, runGloom: 0, totalGloom: 0,
-        echoes: 0, echoesTotal: 0,
+        echoes: 0, echoesTotal: 0, runEchoes: 0, ritesKept: {},
         glass: 0, glassTotal: 0, unlightings: 0,
         den: {}, upg: {}, rites: {}, perks: {}, omens: {}, codex: {},
         codexUnread: 0,
@@ -125,6 +126,17 @@
       D.DENIZENS.forEach(function (d) { var n = int(o.den, d.id, 0, 5000, 0); if (n) s.den[d.id] = n; });
       UPGS.forEach(function (u) { if (flag(o.upg, u.id)) s.upg[u.id] = 1; });
       D.RITES.forEach(function (r) { var n = int(o.rites, r.id, 0, r.max || 400, 0); if (n) s.rites[r.id] = n; });
+      // Echoes gained this fathom, and the Rite levels carried in by Rites Remembered. A save from
+      // before these fields existed cannot say, so its Rites are treated as carried in and tracked from here.
+      if (own(o, 'runEchoes')) {
+        s.runEchoes = num(o, 'runEchoes', 0, s.echoesTotal, 0);
+        D.RITES.forEach(function (r) { var n = int(o.ritesKept, r.id, 0, r.max || 400, 0); if (n) s.ritesKept[r.id] = n; });
+      } else if (s.unlightings > 0) {
+        s.runEchoes = s.echoes;
+        for (var rk in s.rites) s.ritesKept[rk] = s.rites[rk];
+      } else {
+        s.runEchoes = s.echoesTotal;
+      }
       D.PERKS.forEach(function (p) { if (flag(o.perks, p.id)) s.perks[p.id] = 1; });
       OMENS.forEach(function (m) { if (flag(o.omens, m.id)) s.omens[m.id] = 1; });
       D.CODEX.forEach(function (c) { if (flag(o.codex, c.id)) s.codex[c.id] = 1; });
@@ -229,11 +241,20 @@
         s.gloom = Math.max(0, Math.min(s.gloom, s.runGloom - spent));
       }
 
-      // Before the first Unlighting, every Rite level was paid for in Echoes.
-      if (s.unlightings === 0) {
-        var e = 0;
-        D.RITES.forEach(function (r) { for (var l = 0; l < (s.rites[r.id] || 0); l++) e += riteCost(r, l, s); });
-        if (e > (s.echoesTotal - s.echoes) * 1.01 + 1) { s.rites = {}; fixes++; }
+      // Rite levels above the ones carried in were paid for in this fathom's Echoes.
+      if (s.echoes > s.runEchoes) { s.echoes = s.runEchoes; fixes++; }
+      var keptBad = false;
+      D.RITES.forEach(function (r) {
+        var have = s.rites[r.id] || 0;
+        if ((s.ritesKept[r.id] || 0) > have) { if (have) s.ritesKept[r.id] = have; else delete s.ritesKept[r.id]; keptBad = true; }
+      });
+      if (keptBad) fixes++;
+      var e = 0;
+      D.RITES.forEach(function (r) { for (var l = s.ritesKept[r.id] || 0; l < (s.rites[r.id] || 0); l++) e += riteCost(r, l, s); });
+      if (e > (s.runEchoes - s.echoes) * 1.01 + 1) {
+        var back = {};
+        for (var bk in s.ritesKept) back[bk] = s.ritesKept[bk];
+        s.rites = back; fixes++;
       }
 
       // Hands and lanterns have physical limits.
@@ -310,11 +331,36 @@
           note = 'The saved realm could not be read. A new one begins.';
         }
       } else if (legacy) {
-        try { S = adopt(JSON.parse(legacy)); store.remove(OLD_KEY); } catch (e) { S = fresh(); }
+        // The v1 save was never sealed, so it is the one input nothing vouches for. It is size-limited,
+        // marked, rewritten as a sealed v2 save at once, and no longer read after LEGACY_UNTIL.
+        if (wallNow() > LEGACY_UNTIL) {
+          try { store.set(OLD_KEY + '.retired', legacy.slice(0, MAX_SAVE)); store.remove(OLD_KEY); } catch (e) {}
+        } else if (legacy.length > MAX_SAVE) {
+          try { store.set(OLD_KEY + '.unreadable', legacy.slice(0, MAX_SAVE)); store.remove(OLD_KEY); } catch (e) {}
+          note = 'An older realm was found but it was too large to read. A new one begins.';
+        } else {
+          try {
+            S = adopt(JSON.parse(legacy));
+            S.marks = Math.max(S.marks, 1);
+            note = 'An older realm was found and carried over. The Scribes have noted that it arrived unsealed.';
+            pruneOmens();
+            recalc();
+            if (save()) store.remove(OLD_KEY);
+          } catch (e) { S = fresh(); }
+        }
       }
       pruneOmens();
       recalc();
       return { note: note };
+    }
+
+    /* What the interface should do about a storage event from another window: 'taken' when another
+       window is saving this realm, 'erased' when the saved realm was removed (or all storage was
+       cleared), null for anything that is not about this realm. Pure, so it can be tested. */
+    function storageAction(key, newValue) {
+      if (key === null) return 'erased';
+      if (key !== KEY) return null;
+      return newValue === null ? 'erased' : 'taken';
     }
 
     function exportText() { return pack(); }
@@ -584,7 +630,7 @@
     /* ---------- core actions ---------- */
 
     function gain(x) { S.gloom += x; S.runGloom += x; S.totalGloom += x; }
-    function addEchoes(x) { S.echoes += x; S.echoesTotal += x; }
+    function addEchoes(x) { S.echoes += x; S.echoesTotal += x; S.runEchoes += x; }
 
     function afterChange() { recalc(); slowChecks(); }
 
@@ -636,11 +682,13 @@
       var g = glassGain();
       if (g < 1) return false;
       S.glass += g; S.glassTotal += g; S.unlightings++;
-      S.gloom = 0; S.runGloom = 0; S.echoes = 0;
+      S.gloom = 0; S.runGloom = 0; S.echoes = 0; S.runEchoes = 0;
       S.den = {}; S.upg = {};
       var kept = {};
       if (perk('remember')) for (var k in S.rites) { var h = Math.floor(S.rites[k] / 2); if (h) kept[k] = h; }
       S.rites = kept;
+      S.ritesKept = {};
+      for (var kk in kept) S.ritesKept[kk] = kept[kk];
       var free = startingDenizens(S);
       for (var fk in free) S.den[fk] = free[fk];
       S.shaft = perk('quick') ? Math.floor(S.bestShaft / 2) + 1 : 1;
@@ -910,7 +958,7 @@
       setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
       // save
       load: load, save: save, exportText: exportText, importText: importText, erase: erase,
-      halt: function () { halted = true; },
+      halt: function () { halted = true; }, storageAction: storageAction,
       // reads
       cnt: cnt, rl: rl, perk: perk, totalDenizens: totalDenizens, totalRites: totalRites,
       denCost: denCost, maxBuy: maxBuy, riteCost: riteCost, shaftMaxHp: shaftMaxHp, shaftReward: shaftReward,

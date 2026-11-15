@@ -173,7 +173,7 @@ function altered(e) {
   return {
     v: 3, seed: 123456789, born: 5,
     gloom: 123456, runGloom: 4e8, totalGloom: 5e8,
-    echoes: 300, echoesTotal: 5000,
+    echoes: 300, echoesTotal: 5000, runEchoes: 400, ritesKept: { edge: 1 },
     glass: 5, glassTotal: 40, unlightings: 3,
     den: { gleaner: 12 }, upg: { hand0: 1 }, rites: { edge: 2, listen: 1 }, perks: { absence: 1, keen: 1 },
     omens: { o0: 1, o1: 1 }, codex: { waking: 1, gloom: 1 },

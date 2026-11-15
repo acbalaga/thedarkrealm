@@ -570,6 +570,14 @@
     return true;
   }
 
+  /* Holding Enter or Space on a focused button fires trusted clicks at the keyboard repeat rate.
+     Only a fresh press may act. Pointer and touch input are not affected. */
+  function guardRepeat(node) {
+    node.addEventListener('keydown', function (ev) {
+      if (ev.repeat && (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar')) ev.preventDefault();
+    });
+  }
+
   function wellClick(ev) {
     if (!clickAllowed(ev)) return;
     var amount = engine.gather(true);
@@ -661,6 +669,8 @@
     S = engine.S;
     engine.recalc();
     buildTabs();
+    guardRepeat($('well'));
+    guardRepeat($('lantern'));
     $('well').addEventListener('click', wellClick);
     $('lantern').addEventListener('click', function (ev) {
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
@@ -684,11 +694,17 @@
     document.addEventListener('visibilitychange', function () { if (document.hidden) keep(); else frame(); });
     /* A second window on the same save would overwrite this one and double the away credit. */
     window.addEventListener('storage', function (e) {
-      if (e.key !== engine.KEY || e.newValue === null || engine.halted) return;
+      var act = engine.storageAction(e.key, e.newValue);
+      if (!act || engine.halted) return;
       engine.halt();
       modalQueue.length = 0;
-      modal('The realm is open elsewhere', h('p', null, 'Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.'),
-        [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }]);
+      if (act === 'erased') {
+        modal('The realm was erased in another window.', h('p', null, 'This window has stopped. Nothing here will be saved over the empty seat.'),
+          [{ label: 'Begin again', primary: true, cb: function () { wiping = true; location.reload(); return false; } }]);
+      } else {
+        modal('The realm is open elsewhere', h('p', null, 'Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.'),
+          [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }]);
+      }
     });
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
