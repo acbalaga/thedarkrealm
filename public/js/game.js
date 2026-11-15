@@ -5,6 +5,8 @@
   var D = window.TDR_DATA, CORE = window.TDR_CORE;
   try { delete window.TDR_DATA; delete window.TDR_CORE; } catch (e) {}   // keep the tables and the rules out of console reach
   var CLICK_CAP = 14;       // hand gathers accepted per second
+  var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
+  try { delete window.TDR_VERSION; } catch (e) {}
 
   /* Clocks are captured once so later overrides of Date.now or performance.now change nothing. */
   var wallNow = Date.now.bind(Date);
@@ -512,10 +514,35 @@
     c2.onchange = function () { S.opts.motion = c2.checked; applyMotion(); };
     page.appendChild(o1); page.appendChild(o2);
 
+    page.appendChild(el('h3', 'sub-head', 'Version'));
+    var upRow = el('div', 'btn-row');
+    var upBtn = el('button', 'btn primary', 'Apply update'); upBtn.type = 'button'; upBtn.hidden = true;
+    upBtn.onclick = applyUpdate;
+    upRow.appendChild(upBtn);
+    page.appendChild(upRow);
+    page.appendChild(el('p', 'dim small', 'Version ' + VERSION));
+
     return function () {
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
       c1.checked = S.opts.sci; c2.checked = S.opts.motion;
+      upBtn.hidden = !waitingWorker;
     };
+  }
+
+  /* ---------- updates ---------- */
+
+  /* A new service worker waits until the player says so. Progress is saved first. */
+  var waitingWorker = null, applying = false;
+  function offerUpdate(worker) {
+    if (waitingWorker || !navigator.serviceWorker.controller) return;   // the first install is not an update
+    waitingWorker = worker;
+    say('A newer realm is ready. Apply it from the Realm tab.');
+  }
+  function applyUpdate() {
+    if (!waitingWorker) return;
+    applying = true;
+    engine.save();
+    waitingWorker.postMessage({ type: 'apply' });
   }
 
   /* ---------- render ---------- */
@@ -535,6 +562,7 @@
     var canWork = S.tab !== 'work' && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
     tabBtns.work.classList.toggle('has-dot', canWork);
     tabBtns.codex.classList.toggle('has-dot', S.codexUnread > 0);
+    tabBtns.set.classList.toggle('has-dot', S.tab !== 'set' && !!waitingWorker);
     tabBtns.unl.classList.toggle('has-dot', S.tab !== 'unl' && S.unlightings === 0 && glassGain() >= 1);
 
     setBuff('hush', 'Deep Hush', S.buffs.hush);
@@ -715,7 +743,19 @@
           createScriptURL: function (u) { if (u === 'sw.js') return u; throw new TypeError('blocked'); }
         }).createScriptURL('sw.js');
       }
-      navigator.serviceWorker.register(swUrl).catch(function () {});
+      navigator.serviceWorker.register(swUrl).then(function (reg) {
+        if (reg.waiting) offerUpdate(reg.waiting);
+        reg.addEventListener('updatefound', function () {
+          var w = reg.installing;
+          if (!w) return;
+          w.addEventListener('statechange', function () { if (w.state === 'installed') offerUpdate(w); });
+        });
+      }).catch(function () {});
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!applying) return;
+        applying = false;
+        location.reload();
+      });
     }
   }
 

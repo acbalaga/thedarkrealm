@@ -21,7 +21,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | --- | --- | --- | --- |
 | [x] | [TDR-010](TDR-010-dom-sinks-trusted-types-headers.md) Remove HTML sinks, Trusted Types, headers | M | none |
 | [x] | [TDR-011](TDR-011-save-integrity-gaps.md) Save and input integrity gaps | S | 001 |
-| [ ] | [TDR-012](TDR-012-service-worker-atomic-updates.md) Service worker, atomic versions, update prompt | M | 002 |
+| [x] | [TDR-012](TDR-012-service-worker-atomic-updates.md) Service worker, atomic versions, update prompt | M | 002 |
 | [ ] | [TDR-013](TDR-013-save-durability-and-backups.md) Backups, file export, durability | M | 001, 010 |
 
 ### Mechanics
@@ -127,3 +127,6 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-011: Rites Remembered only matters for the audit through `ritesKept`. A save from before `runEchoes` existed has its current Rites treated as carried in, so the new check starts tracking from that load and cannot flag an honest old save. The fixture saves load with zero repairs. The Rite-spend check now also runs when Rites are partly kept, replacing the old check that only ran before the first Unlighting.
 - TDR-011: an oversized v1 save is moved to `thedarkrealm.save.v1.unreadable` rather than deleted, in the same spirit as the v2 `.rejected` key. Keys under `.retired` and `.unreadable` are never read and are not removed by Erase.
 - TDR-011: key repeat was tested in Chromium only. Browsers differ in whether `preventDefault` on a repeated Enter keydown stops the click, so check Firefox and Safari by hand.
+- TDR-012: tested in Chromium end to end (`tests/e2e/update.spec.js`): the new version waits, the Realm tab offers it, applying reloads onto it, and the offline reload still loads. The update prompt is a Whisper plus a button and a dot on the Realm tab, because the toast layer (TDR-051) has not landed. Replace it when TDR-051 lands.
+- TDR-012: a navigation to an unlisted path (for example `/nothing`) is no longer answered with the game page when offline. Only `/` and `/index.html` map to `./`. The 404 page is therefore not available offline either.
+- TDR-012: the stamp covers every file in `FILES` except `js/version.js`, which holds it. `sw.js` itself is not hashed (the browser compares it byte for byte already), so a change to `sw.js` alone does not change `CACHE`.

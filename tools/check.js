@@ -4,6 +4,10 @@
    holds public/, so tests can point it at small fixture trees. */
 var fs = require('fs');
 var path = require('path');
+var shared = require('./shared.js');
+var stampLib = require('./stamp-sw.js');
+
+var read = shared.read, exists = shared.exists, walk = shared.walk, filesList = shared.filesList;
 
 var IGNORED_UNLISTED = ['_headers', '404.html', 'sw.js', 'icons/icon-maskable.svg'];
 var SINKS = [
@@ -16,18 +20,6 @@ var SINKS = [
   ['string timer', /\b(setTimeout|setInterval)\s*\(\s*['"`]/],
   ['javascript:', /javascript:/i]
 ];
-
-function read(p) { return fs.readFileSync(p, 'utf8'); }
-function exists(p) { return fs.existsSync(p); }
-
-function walk(dir, base, out) {
-  fs.readdirSync(dir).forEach(function (n) {
-    var full = path.join(dir, n);
-    var rel = base ? base + '/' + n : n;
-    if (fs.statSync(full).isDirectory()) walk(full, rel, out); else out.push(rel);
-  });
-  return out;
-}
 
 /* Drop comments so a note about innerHTML does not trip the guard. Keeps line numbers. */
 function stripJsComments(src) {
@@ -57,15 +49,8 @@ function normCsp(s) {
     .filter(function (d) { return d && d.indexOf('frame-ancestors') !== 0; }).sort().join('; ');
 }
 
-function filesList(swSrc) {
-  var m = /var\s+FILES\s*=\s*\[([\s\S]*?)\]/.exec(swSrc);
-  if (!m) return null;
-  var out = [], re = /'([^']*)'|"([^"]*)"/g, x;
-  while ((x = re.exec(m[1]))) out.push(x[1] !== undefined ? x[1] : x[2]);
-  return out;
-}
-
-function check(root, allow) {
+function check(root, allow, options) {
+  options = options || {};
   var pub = path.join(root, 'public');
   var errs = [];
   function fail(msg) { errs.push(msg); }
@@ -141,6 +126,9 @@ function check(root, allow) {
       });
     }
   }
+
+  /* 6. The cache name must be the hash of the files, so a forgotten bump fails here. */
+  if (options.stamp !== false) stampLib.verify(root).forEach(fail);
   return errs;
 }
 

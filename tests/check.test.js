@@ -27,7 +27,7 @@ function tree(files) {
 function errorsFor(change, allow) {
   const files = Object.assign({}, GOOD, change);
   Object.keys(files).forEach((k) => { if (files[k] === null) delete files[k]; });
-  return check(tree(files), allow);
+  return check(tree(files), allow, { stamp: false });
 }
 function flags(change, re, allow) {
   const e = errorsFor(change, allow);

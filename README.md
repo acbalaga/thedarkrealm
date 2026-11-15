@@ -18,7 +18,7 @@ Installing as an app needs the game served over https (a browser rule, not a gam
 
 After the first visit the service worker has every file cached, so the installed app launches and plays with no connection. It opens full screen, respects the notch and home-indicator areas, and saves when it is sent to the background. An installed app keeps its own save, separate from the browser tab, so use Realm > Export save to carry progress across.
 
-Updates load in the background and apply on the next launch. Bump `CACHE` in `public/sw.js` when shipping changes.
+A new version downloads in full in the background and waits, so one launch never mixes old and new files. The Realm tab then offers Apply update (it saves first and reloads). If you ignore it, the new version starts on the next cold launch. The version shown at the bottom of the Realm tab is a hash of the shipped files. Run `npm run stamp` after changing anything under `public/`; `npm run check` fails if it is stale, and `npm run deploy` stamps first.
 
 ## Deploy to Cloudflare Workers
 

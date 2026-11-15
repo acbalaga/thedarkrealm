@@ -35,7 +35,7 @@ The save is the only thing the player owns. Treat the schema as a public API.
 ## Shipping a change
 
 1. Run `npm test` (available once TDR-001 lands).
-2. If any file under `public/` changed, bump `CACHE` in `public/sw.js` (automated once TDR-012 lands) and add new files to `FILES`.
+2. If any file under `public/` changed, add new files to `FILES` in `public/sw.js` and run `npm run stamp`. It rewrites `CACHE` and `public/js/version.js` from a hash of the files. `npm run check` fails when the stamp is stale.
 3. Update `README.md` if player-visible behaviour, the Fair play table or the Security list changed.
 4. Tick the ticket in `docs/tickets/README.md`.
 5. One ticket per branch and PR. Do not bundle.
