@@ -38,7 +38,7 @@
   </div>
   <div id="strip">
     <button id="strip-well" type="button" aria-label="Gather Gloom"></button>
-    <button id="strip-whisper" type="button" aria-label="Latest whisper. Go to the Seat."></button>
+    <button id="strip-whisper" type="button" title="Go to the Seat"></button>
     <div id="strip-floaters" aria-hidden="true"></div>
   </div>
 </header>
@@ -53,11 +53,11 @@
       <button id="lantern" type="button" hidden aria-label="Snuff the Stray Lantern"><span></span></button>
       <div id="floaters" aria-hidden="true"></div>
       <p class="well-hint" id="well-hint">Touch the Stillwell to gather Gloom</p>
-      <div id="buffs"></div>
+      <div id="buffs"><button id="snuff" class="btn small-btn" type="button" hidden>Snuff the lantern</button></div>
     </div>
     <div class="log-box">
       <h2>Whispers</h2>
-      <ul id="log" aria-live="polite"></ul>
+      <ul id="log" aria-live="polite" tabindex="0" aria-label="Whispers"></ul>
     </div>
   </section>
 
@@ -69,9 +69,10 @@
 </main>
 
 <nav id="bar" aria-label="Destinations"></nav>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <div id="modal" hidden>
-  <div class="modal-card" role="dialog" aria-modal="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
     <h2 id="modal-title"></h2>
     <div id="modal-body"></div>
     <div id="modal-btns"></div>

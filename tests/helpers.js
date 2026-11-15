@@ -41,6 +41,7 @@ function fakeEnv(opts) {
     monoNow: () => clock.mono,
     random: seeded(opts.seed || 1),
     hidden: () => !!clock.hidden,
+    prefersReducedMotion: () => !!opts.reducedMotion,
     say: (m) => said.push(m),
     storage: {
       get: (k) => (map.has(k) ? map.get(k) : null),

@@ -98,7 +98,7 @@
         marks: 0,             // times the save failed its seal or its audit
         exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
         remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
-        opts: { sci: false, motion: true, buy: 1 },
+        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true },
         nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
@@ -171,6 +171,7 @@
       s.remindedAt = num(o, 'remindedAt', 0, now, 0);
       s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
+      s.opts.keys = !own(o.opts, 'keys') || o.opts.keys !== false;
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
       if (own(o, 'nav') && o.nav !== null && typeof o.nav === 'object') {
         // Page ids are free text of a safe shape: later pages are registered by the interface, not known here.

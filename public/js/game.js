@@ -19,6 +19,7 @@
     monoNow: monoNow,
     random: function () { return Math.random(); },
     hidden: function () { return document.hidden === true; },
+    prefersReducedMotion: function () { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); },
     say: function (msg) { say(msg); },
     storage: {
       get: function (k) { return localStorage.getItem(k); },
@@ -87,16 +88,66 @@
     while (ul.children.length > 40) ul.removeChild(ul.lastChild);
   }
 
-  var modalQueue = [], modalOpen = false;
-  /* body: a node or an array of nodes, built with h(). */
-  function modal(title, body, btns) {
-    modalQueue.push({ title: title, body: body, btns: btns || [{ label: 'Close', primary: true }] });
+  /* One polite live region for things worth announcing. Routine Whispers are not announced. */
+  function live(msg) {
+    var n = $('live');
+    if (!n) return;
+    n.textContent = '';
+    setTimeout(function () { n.textContent = msg; }, 30);
+  }
+  function flushToasts() {}      // the toast queue (TDR-051) hooks in here: held while a dialog is open
+
+  /* Arrow keys, Home and End move between the controls of a tab list or radio group, and only the
+     selected one is in the tab order. */
+  function rovingKeys(container, itemSel, activate) {
+    container.addEventListener('keydown', function (ev) {
+      var items = [].slice.call(container.querySelectorAll(itemSel)).filter(function (n) { return !n.hidden; });
+      var i = items.indexOf(document.activeElement);
+      if (i < 0) return;
+      var j = -1;
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') j = (i + 1) % items.length;
+      else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') j = (i - 1 + items.length) % items.length;
+      else if (ev.key === 'Home') j = 0;
+      else if (ev.key === 'End') j = items.length - 1;
+      if (j < 0) return;
+      ev.preventDefault();
+      items[j].focus();
+      activate(items[j]);
+    });
+  }
+  function rovingTab(items, selected) {
+    items.forEach(function (n) { n.tabIndex = n === selected ? 0 : -1; });
+  }
+
+  var modalQueue = [], modalOpen = false, modalCur = null, modalOpener = null;
+  /* body: a node or an array of nodes, built with h(). opts.required: a choice the player has to make, so
+     Escape and the backdrop do not close it. */
+  function modal(title, body, btns, opts) {
+    modalQueue.push({ title: title, body: body, btns: btns || [{ label: 'Close', primary: true }], required: !!(opts && opts.required) });
     if (!modalOpen) nextModal();
   }
+
+  /* While a dialog is open the page behind it is inert (aria-hidden where inert is not supported). */
+  function setBackground(off) {
+    ['top', 'bar'].map($).concat([document.querySelector('main')]).forEach(function (n) {
+      if (!n) return;
+      if ('inert' in n) n.inert = off;
+      else if (off) n.setAttribute('aria-hidden', 'true'); else n.removeAttribute('aria-hidden');
+    });
+  }
+
   function nextModal() {
     var m = modalQueue.shift();
-    if (!m) { $('modal').hidden = true; modalOpen = false; return; }
-    modalOpen = true;
+    if (!m) {
+      $('modal').hidden = true; modalOpen = false; modalCur = null;
+      setBackground(false);
+      if (modalOpener && document.contains(modalOpener) && !modalOpener.hidden) modalOpener.focus();
+      modalOpener = null;
+      flushToasts();
+      return;
+    }
+    if (!modalOpen) { modalOpener = document.activeElement; setBackground(true); }
+    modalOpen = true; modalCur = m;
     $('modal-title').textContent = m.title;
     $('modal-body').replaceChildren.apply($('modal-body'), [].concat(m.body));
     var box = $('modal-btns');
@@ -115,6 +166,22 @@
     if (first) first.focus();
   }
 
+  /* Tab and Shift+Tab stay inside the dialog. */
+  function trapFocus(ev) {
+    if (ev.key !== 'Tab' || !modalOpen) return;
+    var f = [].slice.call($('modal').querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])')).filter(function (n) { return !n.disabled && !n.hidden && n.offsetParent !== null; });
+    if (!f.length) { ev.preventDefault(); $('modal').querySelector('.modal-card').focus(); return; }
+    var first = f[0], last = f[f.length - 1], at = document.activeElement;
+    if (ev.shiftKey && (at === first || !$('modal').contains(at))) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && (at === last || !$('modal').contains(at))) { ev.preventDefault(); first.focus(); }
+  }
+
+  /* Escape closes a dialog that is not a required choice. */
+  function closeTopModal() {
+    if (modalOpen && modalCur && !modalCur.required) { nextModal(); return true; }
+    return false;
+  }
+
   function showEnding() {
     modal('The First Lamp', [
       h('p', null, 'The last shaft closes behind your Host like an eye.'),
@@ -122,7 +189,7 @@
         'By it you can see the seat. By it, the seat casts a shadow, long and patient, in the shape of a queen.'),
       h('p', null, 'The Auric Concord will cut no more shafts. They have nothing left to lower.'),
       h('p', { className: 'dim' }, 'The realm is quiet. You may keep it as long as you like. The dark goes on down, and so can you.')],
-      [{ label: 'Keep the chair warm', primary: true }]);
+      [{ label: 'Keep the chair warm', primary: true }], { required: true });
   }
 
   /* ---------- pages ---------- */
@@ -141,6 +208,9 @@
     if (def.id === 'seat' || pages[def.id]) return;
     var node = el('div', 'page');
     node.hidden = true;
+    node.id = 'page-' + def.id;
+    node.setAttribute('role', 'tabpanel');
+    node.setAttribute('aria-label', def.label);
     $('pages').appendChild(node);
     pages[def.id] = node;
     updaters[def.id] = (def.build || BUILDERS[def.id])(node);
@@ -161,6 +231,8 @@
         var t = el('button', 'tab', d.label);
         t.type = 'button';
         t.setAttribute('role', 'tab');
+        t.id = 'tab-' + d.id;
+        t.setAttribute('aria-controls', 'pages');
         t.onclick = function () { goDest(d.id); };
         t.appendChild(el('i', 'dot'));
         tabs.appendChild(t);
@@ -176,6 +248,8 @@
       d.pages.forEach(mountPage);
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
+    rovingKeys(tabs, '.tab', function (n) { n.click(); });
+    rovingKeys($('subnav'), '.seg-btn', function (n) { n.click(); });
     if (wideQuery.addEventListener) wideQuery.addEventListener('change', function () { applyNav(); render(); });
   }
 
@@ -198,12 +272,16 @@
         destBtns[x.id].hidden = !vis;
         destBtns[x.id].classList.toggle('active', on);
         destBtns[x.id].setAttribute('aria-selected', on ? 'true' : 'false');
+        destBtns[x.id].tabIndex = on ? 0 : -1;
       }
       barBtns[x.id].hidden = !vis;
       barBtns[x.id].classList.toggle('active', on);
       if (on) barBtns[x.id].setAttribute('aria-current', 'page'); else barBtns[x.id].removeAttribute('aria-current');
     });
     Object.keys(pages).forEach(function (id) { pages[id].hidden = id !== p.id; });
+    var pg = $('pages');
+    if (destBtns[d.id]) pg.setAttribute('aria-labelledby', 'tab-' + d.id); else pg.removeAttribute('aria-labelledby');
+    pg.setAttribute('role', 'tabpanel');
     var vis = NAVM.pagesOf(d, S.unlocked), sig = d.id + ':' + vis.map(function (x) { return x.id; }).join(',') + ':' + p.id;
     var sub = $('subnav');
     if (sig !== navSig) {
@@ -213,11 +291,18 @@
       vis.forEach(function (x) {
         var b = el('button', 'seg-btn' + (x.id === p.id ? ' on' : ''), x.label);
         b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.id = 'subtab-' + x.id;
+        b.setAttribute('aria-controls', 'page-' + x.id);
+        b.setAttribute('aria-selected', x.id === p.id ? 'true' : 'false');
+        b.tabIndex = x.id === p.id ? 0 : -1;
         b.onclick = function () { goPage(d.id, x.id); };
         sub.appendChild(b);
         subBtns.push({ id: x.id, b: b });
       });
       sub.hidden = vis.length < 2 || d.seatOnly;
+      sub.setAttribute('role', 'tablist');
+      sub.setAttribute('aria-label', d.label + ' pages');
     }
     if (p.id === 'codex') S.codexUnread = 0;
   }
@@ -229,15 +314,19 @@
     var head = el('div', 'page-head');
     head.appendChild(el('p', 'lede', 'Bind the things that live down here. Each one gathers Gloom without being asked, and lends its weight to your Host.'));
     var modes = el('div', 'seg');
+    modes.setAttribute('role', 'radiogroup');
+    modes.setAttribute('aria-label', 'How many to bind at once');
     var modeBtns = [];
     [1, 10, 25, 'max'].forEach(function (m) {
       var b = el('button', 'seg-btn', m === 'max' ? 'Max' : '×' + m);
       b.type = 'button';
       b.onclick = function () { S.opts.buy = m; render(); };
       modes.appendChild(b);
+      b.setAttribute('role', 'radio');
       modeBtns.push({ m: m, b: b });
     });
     head.appendChild(modes);
+    rovingKeys(modes, '.seg-btn', function (n) { n.click(); });
     page.appendChild(head);
 
     var rows = D.DENIZENS.map(function (d, i) {
@@ -263,7 +352,12 @@
     });
 
     return function () {
-      modeBtns.forEach(function (x) { x.b.classList.toggle('on', S.opts.buy === x.m); });
+      modeBtns.forEach(function (x) {
+        var on = S.opts.buy === x.m;
+        x.b.classList.toggle('on', on);
+        x.b.setAttribute('aria-checked', on ? 'true' : 'false');
+        x.b.tabIndex = on ? 0 : -1;
+      });
       rows.forEach(function (r) {
         var d = r.d, n = cnt(d.id);
         var vis = r.i === 0 || n > 0 || cnt(D.DENIZENS[r.i - 1].id) > 0 || S.runGloom >= d.cost * 0.25;
@@ -564,6 +658,7 @@
     mk('Save now', function () { say(engine.save() ? 'The Scribes have written it down.' : 'This browser refused to store the save.'); });
     mk('Export save', function () {
       var ta = h('textarea', { id: 'io', readOnly: true, rows: 6 });
+      ta.setAttribute('aria-label', 'Save text');
       ta.value = engine.exportText();
       var btns = [{ label: 'Copy', cb: function () {
         var t = ta; t.select();
@@ -581,6 +676,8 @@
     mk('Import save', function () {
       var ta = h('textarea', { id: 'io', rows: 6 }), err = h('p', { id: 'io-err', className: 'warn' });
       var file = h('input', { type: 'file', accept: '.txt,.tdr.txt,text/plain' });
+      ta.setAttribute('aria-label', 'Save text to import');
+      file.setAttribute('aria-label', 'Or choose a save file');
       file.onchange = function () {
         var f = file.files && file.files[0];
         if (!f) return;
@@ -658,6 +755,7 @@
           var ex = el('button', 'btn', 'Export'); ex.type = 'button';
           ex.onclick = function () {
             var t = h('textarea', { readOnly: true, rows: 6 }); t.value = a.text;
+            t.setAttribute('aria-label', 'Set-aside save text');
             modal('Set-aside copy', [h('p', null, 'This copy is not played and cannot be restored. Keep the text if you want to look at it.'), t], [{ label: 'Done', primary: true }]);
           };
           var dc = el('button', 'btn danger', 'Discard'); dc.type = 'button';
@@ -679,7 +777,11 @@
     var o2 = el('label', 'check'); var c2 = document.createElement('input'); c2.type = 'checkbox';
     o2.appendChild(c2); o2.appendChild(document.createTextNode(' Drifting motes and motion'));
     c2.onchange = function () { S.opts.motion = c2.checked; applyMotion(); };
-    page.appendChild(o1); page.appendChild(o2);
+    var o3 = el('label', 'check'); var c3 = document.createElement('input'); c3.type = 'checkbox';
+    o3.appendChild(c3); o3.appendChild(document.createTextNode(' Keyboard shortcuts'));
+    c3.onchange = function () { S.opts.keys = c3.checked; };
+    page.appendChild(o1); page.appendChild(o2); page.appendChild(o3);
+    page.appendChild(el('p', 'dim small', 'Keys: G Seat, R Realm, H Host, D Deep, L Ledger. Escape closes a dialog. On the Stillwell, Enter or Space gathers once per press.'));
 
     page.appendChild(el('h3', 'sub-head', 'Version'));
     var upRow = el('div', 'btn-row');
@@ -691,7 +793,7 @@
 
     return function () {
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
-      c1.checked = S.opts.sci; c2.checked = S.opts.motion;
+      c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys;
       upBtn.hidden = !waitingWorker;
       refreshBackups();
       var stale = engine.backupStale(S.played, isInstalled(), S.exportedAt, wallNow());
@@ -744,8 +846,8 @@
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     syncLantern();
-    var title = fmt(S.gloom) + ' Gloom · The Dark Realm';
-    if (document.title !== title) document.title = title;
+    var title = fmt(S.gloom) + ' Gloom · The Dark Realm', tnow = wallNow();
+    if (document.title !== title && tnow - titleAt > 10000) { document.title = title; titleAt = tnow; }
 
     if (cur && updaters[cur.page.id]) updaters[cur.page.id]();
   }
@@ -754,6 +856,7 @@
     if (destBtns[destId]) destBtns[destId].classList.toggle('has-dot', on);
     barBtns[destId].classList.toggle('has-dot', on);
   }
+  var titleAt = 0;     // the title changes at most every 10 seconds: some screen readers announce it
   /* Two chips that are kept and updated in place, never rebuilt. Hush sits above Teeth. */
   var buffEls = { hush: el('span', 'buff'), teeth: el('span', 'buff teeth') };
   function setBuff(key, label, secs) {
@@ -776,6 +879,25 @@
     if (clickTimes.length >= CLICK_CAP) return false;
     clickTimes.push(t);
     return true;
+  }
+
+  /* Keyboard shortcuts. G R H D L go to Seat, Realm, Host, Deep, Ledger. Escape closes a dialog.
+     Ignored while typing, with Ctrl, Alt or Meta held, while a dialog is open, or when switched off in Keeping. */
+  var KEY_DEST = { g: 'seat', r: 'realm', h: 'host', d: 'deep', l: 'ledger' };
+  function onKey(ev) {
+    if (ev.key === 'Escape') { if (closeTopModal()) ev.preventDefault(); return; }
+    if (!S.opts.keys || ev.ctrlKey || ev.altKey || ev.metaKey || modalOpen) return;
+    var t = ev.target;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    var id = KEY_DEST[(ev.key || '').toLowerCase()];
+    if (!id) return;
+    var d = NAVM.dest(id);
+    if (!d || !NAVM.destVisible(d, S.unlocked)) return;
+    ev.preventDefault();
+    if (id === 'seat' && wideQuery.matches) { $('well').focus(); return; }   // on a wide screen the Seat is always there
+    goDest(id);
+    var tab = wideQuery.matches ? destBtns[id] : barBtns[id];
+    if (tab) tab.focus();
   }
 
   /* Holding Enter or Space on a focused button fires trusted clicks at the keyboard repeat rate.
@@ -828,7 +950,9 @@
       lan.style.setProperty('--x', (lanternPathCur === 'drop' ? 12 + Math.random() * 68 : 15 + Math.random() * 65) + '%');
       lan.hidden = false;
       lanternFitW = -1;
+      live('A lantern is passing.');
     }
+    $('snuff').hidden = !on || box.clientWidth === 0;
     if (on) {
       var w = box.clientWidth;
       if (w === 0) lanternFitW = -1;
@@ -910,13 +1034,19 @@
     guardRepeat($('well'));
     guardRepeat($('lantern'));
     $('well').addEventListener('click', wellClick);
+    guardRepeat($('snuff'));
+    $('snuff').addEventListener('click', function (ev) {
+      if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
+    });
+    document.addEventListener('keydown', trapFocus);
+    document.addEventListener('keydown', onKey);
     guardRepeat($('strip-well'));
     $('strip-well').addEventListener('click', wellClick);
     $('lantern').addEventListener('click', function (ev) {
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
     });
     $('modal').addEventListener('click', function (e) {
-      if (e.target === $('modal') && modalQueue.length === 0) nextModal();
+      if (e.target === $('modal') && modalQueue.length === 0) closeTopModal();
     });
     var isNew = S.totalGloom === 0 && S.clicks === 0;
     engine.slowChecks();
@@ -949,10 +1079,10 @@
       modalQueue.length = 0;
       if (act === 'erased') {
         modal('The realm was erased in another window.', h('p', null, 'This window has stopped. Nothing here will be saved over the empty seat.'),
-          [{ label: 'Begin again', primary: true, cb: function () { wiping = true; location.reload(); return false; } }]);
+          [{ label: 'Begin again', primary: true, cb: function () { wiping = true; location.reload(); return false; } }], { required: true });
       } else {
         modal('The realm is open elsewhere', h('p', null, 'Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.'),
-          [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }]);
+          [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }], { required: true });
       }
     });
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
