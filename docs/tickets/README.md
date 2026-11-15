@@ -64,7 +64,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | [ ] | [TDR-053](TDR-053-living-scene.md) A throne room that fills in | M | 050, 030 (both soft) |
 | [ ] | [TDR-054](TDR-054-sound-and-haptics.md) Procedural sound and haptics | M | none |
 | [ ] | [TDR-055](TDR-055-ledger-of-fathoms.md) Ledger of Fathoms, advisor, realm card | M | 004, 010 |
-| [ ] | [TDR-056](TDR-056-visual-identity.md) Visual identity pass | S | none |
+| [x] | [TDR-056](TDR-056-visual-identity.md) Visual identity pass | S | none |
 
 ## Recommended order
 
@@ -136,3 +136,4 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-020: verified in Chromium (`tests/e2e/lantern.spec.js`, screenshots written to the OS temp folder, not the repo): each path at 1280x800, rtl and drop at 390x844, tappable at 7 s. Hang stillness on the `drop` path was not measured numerically, only that it is inside the scene and tappable. Not checked: Safari and Firefox rendering of the individual `translate` property used for the bob (supported since Safari 14.1 and Firefox 72).
 - TDR-020: the welcome-back Whisper and the 8 second clamp fire on any credited absence of 600 seconds or more, including a long hidden tab, because the tab resuming goes through `away()`.
 - TDR-020: with `prefers-reduced-motion` the lantern still travels, as before. TDR-052 is the ticket for that.
+- TDR-056: before and after screenshots were not attached (there is no PR yet). Screenshots of every page at 1280x800 and 390x844 can be regenerated with a Playwright script like the one in this session. The Fathom subtitle does not show a Current name yet because TDR-023 has not landed. Unearned omens are now dim text with an open circle mark instead of reduced opacity, which also does part of TDR-052's contrast work. Font sizes 10 and 11 were also moved onto the scale (to 12), which makes the resource tile labels a little larger.

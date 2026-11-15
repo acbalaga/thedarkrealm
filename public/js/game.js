@@ -47,6 +47,20 @@
     return e;
   }
 
+  /* A price with its currency mark: Gloom ●, Echoes ◆, Nightglass ◇. The mark is text, hidden from
+     screen readers, so colour is not the only cue. node keeps its mark and one text node across updates. */
+  var MARKS = { gloom: '●', echo: '◆', glass: '◇' };
+  function setPrice(node, kind, text) {
+    if (!node._price) {
+      var mark = el('span', 'cur' + (kind === 'echo' ? ' cur-echo' : ''), MARKS[kind] + ' ');
+      mark.setAttribute('aria-hidden', 'true');
+      node._price = { mark: mark, text: document.createTextNode('') };
+      node.appendChild(mark); node.appendChild(node._price.text);
+    }
+    node._price.mark.hidden = text === '';
+    if (node._price.text.nodeValue !== text) node._price.text.nodeValue = text;
+  }
+
   /* Builds a node without ever parsing a string as HTML. props may set className, id, rows,
      readOnly and type. children is a string (a text node), a node, or an array of those. */
   function h(tag, props, children) {
@@ -214,7 +228,7 @@
         r.info.textContent = 'Each ' + fmt(C.denEach[d.id]) + '/s' + (n ? '  ·  together ' + fmt(C.denOut[d.id]) + '/s (' + share + '%)' : '') +
           '  ·  Might ' + fmt(Math.pow(3, r.i));
         r.bl.textContent = 'Bind ×' + k;
-        r.bc.textContent = fmt(cost) + ' Gloom';
+        setPrice(r.bc, 'gloom', fmt(cost) + ' Gloom');
         r.btn.disabled = S.gloom < cost;
       });
     };
@@ -250,7 +264,7 @@
       var sig = list.map(function (u) { return u.id; }).join(',');
       if (sig !== upgSig || cards.length !== list.length) { upgSig = sig; rebuild(list); }
       cards.forEach(function (x) {
-        x.c.textContent = fmt(x.u.cost) + ' Gloom';
+        setPrice(x.c, 'gloom', fmt(x.u.cost) + ' Gloom');
         x.b.disabled = S.gloom < x.u.cost;
       });
       empty.hidden = list.length > 0;
@@ -271,6 +285,9 @@
     var tbar = el('div', 'bar thin'); var tfill = el('div', 'bar-fill time'); var ttxt = el('span', 'bar-txt');
     tbar.appendChild(tfill); tbar.appendChild(ttxt);
     var stats = el('div', 'shaft-stats');
+    var stT1 = document.createTextNode(''), stMark = el('span', 'cur cur-echo', '◆ '), stNum = el('span', 'cur-echo'), stT2 = document.createTextNode('');
+    stMark.setAttribute('aria-hidden', 'true');
+    stats.appendChild(stT1); stats.appendChild(stMark); stats.appendChild(stNum); stats.appendChild(stT2);
     box.appendChild(title); box.appendChild(sub); box.appendChild(bar); box.appendChild(tbar); box.appendChild(stats);
     page.appendChild(box);
 
@@ -304,8 +321,9 @@
         ttxt.textContent = Math.ceil(S.bossTime) + 's';
       }
       var secs = max / C.might;
-      stats.textContent = 'Host Might ' + fmt(C.might) + '  ·  Seal yields ' + fmt(shaftReward(n)) + ' Echoes  ·  ' +
-        (secs < 1 ? 'sealed in under a second' : 'about ' + fmtTime(secs) + ' to seal');
+      stT1.nodeValue = 'Host Might ' + fmt(C.might) + '  ·  Seal yields ';
+      stNum.textContent = fmt(shaftReward(n));
+      stT2.nodeValue = ' Echoes  ·  ' + (secs < 1 ? 'sealed in under a second' : 'about ' + fmtTime(secs) + ' to seal');
       prev.disabled = n <= 1;
       next.disabled = n >= S.shaftTop;
       top.disabled = n >= S.shaftTop && S.autoAdvance;
@@ -341,7 +359,7 @@
         var l = rl(x.r.id), maxed = x.r.max && l >= x.r.max;
         x.lvl.textContent = 'Lv ' + l + (x.r.max ? ' / ' + x.r.max : '');
         x.bl.textContent = maxed ? 'Complete' : 'Perform';
-        x.bc.textContent = maxed ? '' : fmt(riteCost(x.r)) + ' Echoes';
+        setPrice(x.bc, 'echo', maxed ? '' : fmt(riteCost(x.r)) + ' Echoes');
         x.btn.disabled = maxed || S.echoes < riteCost(x.r);
       });
     };
@@ -391,7 +409,7 @@
       cards.forEach(function (x) {
         var own = perk(x.p.id);
         x.b.classList.toggle('owned', own);
-        x.c.textContent = own ? 'Set' : fmt(x.p.cost) + ' Nightglass';
+        setPrice(x.c, 'glass', own ? 'Set' : fmt(x.p.cost) + ' Nightglass');
         x.b.disabled = own || S.glass < x.p.cost;
       });
     };
@@ -405,16 +423,19 @@
     page.appendChild(grid);
     var tiles = OMENS.map(function (o) {
       var t = el('div', 'omen');
-      t.appendChild(el('span', 'card-name', o.name));
+      var nm = el('span', 'card-name'), mark = el('span', 'omen-mark', '○ ');
+      mark.setAttribute('aria-hidden', 'true');
+      nm.appendChild(mark); nm.appendChild(document.createTextNode(o.name));
+      t.appendChild(nm);
       t.appendChild(el('span', 'card-desc', o.desc));
       grid.appendChild(t);
-      return { o: o, t: t };
+      return { o: o, t: t, mark: mark };
     });
     return function () {
       head.textContent = 'Signs that the dark is going well. ' + C.omens + ' of ' + OMENS.length + ' seen. Each adds 1% to all Gloom (+' + C.omens + '%).';
       if (!engine.dirty.omens) return;
       engine.dirty.omens = false;
-      tiles.forEach(function (x) { x.t.classList.toggle('got', !!S.omens[x.o.id]); });
+      tiles.forEach(function (x) { var got = !!S.omens[x.o.id]; x.t.classList.toggle('got', got); x.mark.textContent = got ? '✓ ' : '○ '; });
     };
   }
 
