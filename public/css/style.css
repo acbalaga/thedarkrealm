@@ -518,3 +518,5 @@ body.still .scene-box::before { transition: none; }
 @media (min-width: 861px) { .shelves { display: grid; grid-template-columns: 1fr 1fr; } }
 
 .auto-toggle { margin-top: 2px; font-size: var(--t-xs); color: var(--dim); }
+
+.btn.current { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; font-weight: 400; width: 100%; }

@@ -101,6 +101,8 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        current: 'still', currentChoices: 0,   // the grain of this fathom, and how many times one was chosen
+        fathoms: [],                            // up to 20 records of past fathoms, newest last
         auto: { den: {}, rite: {} },   // toggles for The Usher and The Precentor; they grant nothing without the perk
         snd: { lines: [], done: 0, dry: { shallows: 0, shelf: 0, trench: 0 } },   // Soundings: lines out (seconds left), draws made, draws since a new relic per depth
         relics: {},
@@ -181,6 +183,14 @@
         s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
       });
       s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
+      // The current is only ever set by an Unlighting. Unknown ids, and any save that has not let go yet, read as Still.
+      s.current = own(o, 'current') && s.unlightings > 0 && D.CURRENTS.some(function (c) { return c.id === o.current; }) ? o.current : 'still';
+      s.currentChoices = int(o, 'currentChoices', 0, s.unlightings, 0);
+      if (Array.isArray(o.fathoms)) o.fathoms.slice(-20).forEach(function (f) {
+        if (!f || typeof f !== 'object') return;
+        var cur = D.CURRENTS.some(function (c) { return c.id === f.current; }) ? f.current : 'still';
+        s.fathoms.push({ n: int(f, 'n', 0, 1e6, 0), current: cur, vow: '', sec: num(f, 'sec', 0, BIG, 0), glass: int(f, 'glass', 0, BIG, 0), best: int(f, 'best', 0, 1e5, 0) });
+      });
       // Soundings: known depths only, as many lines as the perk allows, time left clamped to the depth's length.
       var maxLines = s.perks.twolines ? 2 : 1;
       if (o.snd && Array.isArray(o.snd.lines)) o.snd.lines.slice(0, maxLines).forEach(function (l) {
@@ -735,8 +745,8 @@
       return D.BOSSES[n] || 'Lampwarden of the ' + n + 'th Chain';
     }
     function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP) * modsFor(S).glass); }
-    function awayPace() { return Math.min(1, 0.5 + awayMods().awayPace); }
-    function bossMax() { return BOSS_TIME + modsFor(S).bossTime; }
+    function awayPace() { return Math.max(0.1, Math.min(1, 0.5 + awayMods().awayPace)); }
+    function bossMax() { return Math.max(15, BOSS_TIME + modsFor(S).bossTime); }
     function awayCapHours() { return perk('unsleeping') ? 24 : 8; }
 
     function availableUpgs() {
@@ -979,6 +989,7 @@
       });
       return out;
     });
+    addSource('current', function (s) { return D.CURRENTS.filter(function (c) { return c.id === s.current; })[0].mods; });
     addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
       return { gloom: s.buffs.hush > 0 ? 5 : 1, might: s.buffs.teeth > 0 ? 5 : 1 };
@@ -1065,11 +1076,27 @@
       return true;
     }
 
-    function unlight() {
+    function currentDef(id) { return D.CURRENTS.filter(function (c) { return c.id === id; })[0] || D.CURRENTS[0]; }
+    /* The three currents offered at an Unlighting: Still, and two others. Fixed by the seed and the Unlighting count. */
+    function currentOffer() {
+      var others = shuffle(rng('current', S.unlightings), D.CURRENTS.filter(function (c) { return c.id !== 'still'; })).slice(0, 2);
+      return [D.CURRENTS[0]].concat(others);
+    }
+    /* chosen: a current id from the offer. The first Unlighting offers no choice and starts a Still fathom. */
+    function unlight(chosen) {
       var g = glassGain();
       if (g < 1) return false;
+      var next = 'still', picked = false;
+      if (S.unlightings >= 1 && chosen && chosen !== 'still') {
+        if (!currentOffer().some(function (c) { return c.id === chosen; })) return false;
+        next = chosen; picked = true;
+      } else if (S.unlightings >= 1 && chosen === 'still') picked = true;
       writeBackup('unlight', pack());
+      S.fathoms.push({ n: S.unlightings + 1, current: S.current, vow: '', sec: Math.round(S.runTime), glass: g, best: S.bestShaft });
+      if (S.fathoms.length > 20) S.fathoms.shift();
       S.glass += g; S.glassTotal += g; S.unlightings++;
+      S.current = next;
+      if (picked) { S.currentChoices++; say(currentDef(next).line); }
       S.gloom = 0; S.runGloom = 0; S.echoes = 0; S.runEchoes = 0;
       S.den = {}; S.upg = {};
       var kept = {};
@@ -1230,6 +1257,7 @@
       var opts = ['spill', 'spill', 'spill', 'hush', 'hush', 'hush'];
       if (S.unlocked.shafts) opts.push('teeth', 'teeth', 'echo', 'echo');
       var pick = opts[Math.floor(env.random() * opts.length)], res;
+      if (pick === 'hush' && currentDef(S.current).noHush) pick = 'spill';       // a Loud Fathom: the Hush will not come
       if (pick === 'spill') {
         var g = Math.max(C.gps * 300, 30 * C.click) * mult * modsFor(S).lanternYield;
         gain(g);
@@ -1643,7 +1671,7 @@
           longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
         petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), slack: slackLines() > 0, litanies: S.litanyUses, soundings: S.snd.done,
         sets: { table: setDone('table'), survey: setDone('survey'), loft: setDone('loft'), lamp: setDone('lamp'), queen: setDone('queen'), bed: setDone('bed') },
-        currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
+        currents: S.currentChoices, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
       D.CODEX.forEach(function (c) {
@@ -1748,7 +1776,7 @@
     }
 
     /* The factors that make up a channel right now, by source, for the "Why" popover. */
-    var SOURCE_LABELS = { relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    var SOURCE_LABELS = { current: 'This fathom\'s current', relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
     function breakdown(channel) {
       var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
       SOURCES.forEach(function (src) {
@@ -1783,6 +1811,7 @@
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
       riteCostN: riteCostN, maxRite: maxRite,
       lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
+      currentOffer: currentOffer, currentDef: currentDef,
       petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,
       phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,
       skyEffects: skyEffects, nextEvents: nextEvents, almanac: almanac, eclipseCount: eclipseCount,

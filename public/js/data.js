@@ -242,6 +242,19 @@ window.TDR_DATA = (function () {
   /* Automation thresholds: an automatic purchase never spends more than this share of the pool it draws from. */
   var AUTO = { denShare: 0.10, riteShare: 0.25, chamberlainWin: 0.6 };
 
+  /* Currents: the grain of a fathom, chosen at each Unlighting from the second on. Names and lines verbatim from
+     docs/design/LORE_BIBLE.md section 8. `mods` are modifier channels. Starting values. */
+  var CURRENTS = [
+    { id: 'still', name: 'A Still Fathom', short: 'Still', line: 'Nothing pulls. The realm sinks the way it always has.', boon: 'No boon.', bane: 'No bane.', mods: {} },
+    { id: 'silted', name: 'A Silted Fathom', short: 'Silted', line: 'The water is thick here. The wells love it. Hands do not.', boon: 'Tidewell and Sleeper Below output \u00d73.', bane: 'Gathering by hand \u00d70.5.', mods: { 'den.tide': 3, 'den.sleeper': 3, hand: 0.5 } },
+    { id: 'loud', name: 'A Loud Fathom', short: 'Loud', line: 'Every seal rings. The Hush will not come.', boon: 'Echoes \u00d72.', bane: 'Stray Lanterns never grant a Deep Hush.', mods: { echo: 2 }, noHush: true },
+    { id: 'narrow', name: 'A Narrow Fathom', short: 'Narrow', line: 'Close walls. Cheap to fill, hard to swing in.', boon: 'Denizens cost 25% less.', bane: 'Host Might \u00d70.6.', mods: { cost: 0.75, might: 0.6 } },
+    { id: 'lit', name: 'A Lantern-Thick Fathom', short: 'Lantern-thick', line: 'They have found this one already. Chains everywhere.', boon: 'Lanterns arrive twice as often.', bane: 'Away pace \u221220 points.', mods: { lanternRate: 2, awayPace: -0.2 } },
+    { id: 'cold', name: 'A Cold Fathom', short: 'Cold', line: 'The Forge works twice as well. The Orchard will not fruit.', boon: 'Shade-Forge output \u00d74, Host Might \u00d71.5.', bane: 'Starless Orchard output \u00d70.25.', mods: { 'den.forge': 4, might: 1.5, 'den.orchard': 0.25 } },
+    { id: 'hollow', name: 'A Hollow Fathom', short: 'Hollow', line: 'Echoes carry. So does everything else.', boon: 'Echoes \u00d71.5, Rites cost 15% less.', bane: 'Lampwarden timer \u221210 s.', mods: { echo: 1.5, riteCost: 0.85, bossTime: -10 } },
+    { id: 'heavy', name: 'A Heavy Fathom', short: 'Heavy', line: 'The glass will be thicker. It will take longer to press.', boon: 'Nightglass from the Unlighting that ends it \u00d71.25.', bane: 'All Gloom \u00d70.7.', mods: { glass: 1.25, gloom: 0.7 } }
+  ];
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -443,10 +456,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, CURRENTS: CURRENTS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

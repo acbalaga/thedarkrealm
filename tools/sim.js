@@ -155,6 +155,18 @@ function spendGlass(e, sim) {
   }
 }
 
+/* The current: Heavy when the last fathom ran over six hours, otherwise the offered one with the highest Gloom times Might. */
+function chooseCurrent(e, sim) {
+  if (e.S.unlightings < 1) return undefined;
+  var offer = e.currentOffer(), last = e.S.runTime > 6 * HOUR, best = null, bestV = -1;
+  offer.forEach(function (c) {
+    if (last && c.id === 'heavy') { best = c; bestV = Infinity; return; }
+    var m = c.mods, v = (m.gloom || 1) * (m.might || 1);
+    if (v > bestV) { bestV = v; best = c; }
+  });
+  return best.id;
+}
+
 /* ---------- unlighting rule ---------- */
 function maybeUnlight(e, sim) {
   var S = e.S;
@@ -165,7 +177,7 @@ function maybeUnlight(e, sim) {
   if (g < 1 || rate > 0.7 * sim.peak) return false;
   if (S.unlightings > 0 && g < 0.2 * S.glassTotal) return false;
   var before = { t: sim.t, present: sim.present, played: S.played, shaft: S.bestShaft };
-  if (!e.unlight()) return false;
+  if (!e.unlight(chooseCurrent(e, sim))) return false;
   sim.fathoms.push({
     n: S.unlightings, duration: sim.t - sim.fathomStart, present: sim.present - sim.fathomPresent,
     glass: g, deepest: before.shaft

@@ -680,6 +680,7 @@
     btn.onclick = function () {
       var g = glassGain();
       if (g < 1) return;
+      if (S.unlightings >= 1) { chooseCurrent(g); return; }
       modal('Let the realm go?', [
         h('p', null, ['Vesperdeep will sink a fathom. You will begin again in a shallow Stillwell, carrying ', h('b', null, fmt(g)), ' new Nightglass.']),
         h('p', { className: 'dim' }, 'Each Nightglass ever earned gives +5% Gloom and Might, for good.')],
@@ -1131,7 +1132,9 @@
     $('res-glass').hidden = S.glassTotal < 1;
     $('r-glass').textContent = fmt(S.glass);
     $('r-glassb').textContent = '+' + fmt(S.glassTotal * 5) + '%';
-    $('fathom').textContent = 'Vesperdeep  ·  Fathom ' + (S.unlightings + 1);
+    var cdef = engine.currentDef(S.current);
+    $('fathom').textContent = 'Vesperdeep  ·  Fathom ' + (S.unlightings + 1) + (S.current !== 'still' ? '  ·  ' + cdef.short : '');
+    paintCurrentChip(cdef);
 
     applyNav();
     var canWork = !viewing('work') && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
@@ -1266,6 +1269,30 @@
     var lan = !!engine.lantern && cur.dest.id !== 'seat';
     barBtns.seat.classList.toggle('has-dot', lan || (!!offer && cur.dest.id !== 'seat'));
     barBtns.seat.classList.toggle('dot-above', lan);
+  }
+
+  /* ---------- Currents ---------- */
+  var curChip = el('span', 'buff');
+  function paintCurrentChip(c) {
+    var box = $('buffs');
+    if (S.current !== 'still') {
+      var tx = c.name + ' \u00b7 this fathom';
+      if (curChip.textContent !== tx) curChip.textContent = tx;
+      if (curChip.parentNode !== box) box.appendChild(curChip);
+    } else if (curChip.parentNode) curChip.parentNode.removeChild(curChip);
+  }
+  /* The choice at an Unlighting from the second on: three currents, a required choice. Still is always there. */
+  function chooseCurrent(g) {
+    var opts = engine.currentOffer().map(function (c) {
+      var b = el('button', 'btn current'); b.type = 'button';
+      b.appendChild(el('span', 'pet-text', c.name + '. ' + c.line));
+      b.appendChild(el('span', 'pet-effect', 'Boon: ' + c.boon));
+      b.appendChild(el('span', 'pet-effect', 'Bane: ' + c.bane));
+      b.onclick = function () { nextModal(); engine.unlight(c.id); render(); };
+      return b;
+    });
+    modal('Three currents', [h('p', null, ['Vesperdeep will sink a fathom. You will carry ', h('b', null, fmt(g)), ' new Nightglass. Choose the grain of the next fathom.']),
+      h('div', { className: 'waiting' }, opts)], [{ label: 'Not yet' }], { required: true });
   }
 
   /* ---------- Soundings ---------- */

@@ -192,6 +192,7 @@ function altered(e) {
     seen: 1.7e12 + 5, debt: 1234, marks: 2, exportedAt: 1.6e12, remindedAt: 1.65e12,
     opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false, buyRite: 10 },
     auto: { den: { gleaner: true }, rite: { edge: true } },
+    current: 'narrow', currentChoices: 2, fathoms: [{ n: 1, current: 'loud', vow: '', sec: 100, glass: 3, best: 10 }],
     nav: { dest: 'ledger', page: { realm: 'work', host: 'rite', deep: 'vows', ledger: 'codex' } }
   };
 }
