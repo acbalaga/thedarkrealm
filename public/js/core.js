@@ -96,6 +96,8 @@
         codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
+        lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
+        litanyUses: 0,
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
@@ -167,6 +169,11 @@
       s.autoAdvance = !own(o, 'autoAdvance') || o.autoAdvance !== false;
       s.regroup = own(o, 'regroup') && o.regroup === true;
       s.sealed = num(o, 'sealed', 0, BIG, 0);
+      D.LITANIES.forEach(function (l) {
+        s.lit[l.id].on = num(o.lit && o.lit[l.id], 'on', 0, l.on, 0);
+        s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
+      });
+      s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
       s.played = num(o, 'played', 0, BIG, 0);
       s.runTime = num(o, 'runTime', 0, s.played, 0);
       s.clicks = int(o, 'clicks', 0, BIG, 0);
@@ -735,6 +742,7 @@
       if (p.further) { out.gloom *= 10; out.might *= 10; }
       return out;
     });
+    addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
       return { gloom: s.buffs.hush > 0 ? 5 : 1, might: s.buffs.teeth > 0 ? 5 : 1 };
     });
@@ -837,6 +845,7 @@
       S.autoAdvance = true; S.regroup = false;
       S.buffs.hush = 0; S.buffs.teeth = 0;
       S.runTime = 0;
+      D.LITANIES.forEach(function (l) { S.lit[l.id].on = 0; S.lit[l.id].cd = 0; });
       say('The realm lets go. A fathom down, the dark is closer-grained. You carry ' + fmt(g) + ' Nightglass.');
       dirty.upgs = true;
       afterChange();
@@ -888,7 +897,14 @@
       placeShaft(S.shaft - 1);
     }
 
+    /* The Litany of the Held Breath stops a Lampwarden's timer for its first `on` seconds. A dt that spans the
+       end of the effect is split, so the boundary is exact. */
     function fight(dt) {
+      var held = S.lit.breath.on;
+      if (held > 0 && dt > held) { fightFor(held, true); fightFor(dt - held, false); }
+      else fightFor(dt, held > 0);
+    }
+    function fightFor(dt, frozen) {
       if (!S.unlocked.shafts) return;
       var mt = C.might, iter = 0;
       while (dt > 1e-9 && iter++ < 1e6) {
@@ -899,11 +915,11 @@
           if (kills >= 2) { addEchoes(shaftReward(n) * kills); S.sealed += kills; dt -= kills * per; continue; }
         }
         var need = S.shaftHp / mt;
-        var avail = boss ? Math.min(dt, S.bossTime) : dt;
+        var avail = boss && !frozen ? Math.min(dt, S.bossTime) : dt;
         if (need <= avail) { dt -= need; clearShaft(); }
         else {
           S.shaftHp -= mt * avail; dt -= avail;
-          if (boss) { S.bossTime -= avail; if (S.bossTime <= 1e-9) failBoss(); }
+          if (boss && !frozen) { S.bossTime -= avail; if (S.bossTime <= 1e-9) failBoss(); }
         }
       }
     }
@@ -1040,6 +1056,28 @@
       return amount;
     }
 
+    /* ---------- litanies ---------- */
+    function litanyCooldown(l) { return l.cd * Math.pow(0.95, rl('breathing')); }
+
+    /* Speaks a Litany. trusted: a real input event. Returns false when it cannot be spoken now. */
+    function speakLitany(id, trusted) {
+      if (trusted !== true || !S.unlocked.rites) return false;
+      var l = null, i;
+      for (i = 0; i < D.LITANIES.length; i++) if (D.LITANIES[i].id === id) l = D.LITANIES[i];
+      if (!l || S.lit[id].cd > 0) return false;
+      S.lit[id].cd = litanyCooldown(l);
+      S.lit[id].on = l.on;
+      S.litanyUses++;
+      if (id === 'undertow') {
+        recalc();
+        var g = 90 * C.gps / (S.buffs.hush > 0 ? 5 : 1);                // the rate without a Deep Hush
+        gain(g);
+        say('The Undertow comes in. ' + fmt(g) + ' Gloom.');
+      } else say(l.name + ' is spoken.');
+      afterChange();
+      return true;
+    }
+
     /* ---------- court chatter ----------
        One line every few minutes from a denizen the player owns, never repeating until the pool is spent.
        The timer is not saved. It runs only while the page is visible and no dialog is open. */
@@ -1087,7 +1125,17 @@
 
     var slowTimer = 0, saveTimer = 0;
 
+    /* Time is cut where a Litany's effect ends, so each stretch sees the right Might and the right timer. */
     function step(dt) {
+      var guard = 0;
+      while (dt > 1e-9 && guard++ < 8) {
+        var cut = dt;
+        ['teeth', 'breath'].forEach(function (id) { var on = S.lit[id].on; if (on > 1e-9 && on < cut) cut = on; });
+        stepOne(cut);
+        dt -= cut;
+      }
+    }
+    function stepOne(dt) {
       recalc();
       gain(C.gps * dt);
       if (S.buffs.hush > 0) S.buffs.hush = Math.max(0, S.buffs.hush - dt);
@@ -1110,6 +1158,7 @@
       }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
       fight(dt);
+      D.LITANIES.forEach(function (l) { var t = S.lit[l.id]; t.on = Math.max(0, t.on - dt); t.cd = Math.max(0, t.cd - dt); });
       S.played += dt; S.runTime += dt;
     }
 
@@ -1126,6 +1175,8 @@
       var capH = awayCapHours();
       var t = Math.min(sec, capH * 3600);
       if (sec >= 600) { S.lanternIn = Math.min(S.lanternIn, 8); welcomeLantern = true; }
+      // A Litany does nothing while the realm is away: its effect ends and its cooldown runs the full time.
+      D.LITANIES.forEach(function (l) { S.lit[l.id].on = 0; S.lit[l.id].cd = Math.max(0, S.lit[l.id].cd - sec); });
       var eff = awayPace(), kept = { h: S.buffs.hush, t: S.buffs.teeth };
       S.buffs.hush = 0; S.buffs.teeth = 0;
       recalc({ present: false, wall: wallNow() });
@@ -1231,7 +1282,7 @@
         echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal,
         // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
         skyOpen: 0, sky: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0, eclipse: 0 },
-        petitions: 0, vigils: 0, litanies: 0, soundings: 0,
+        petitions: 0, vigils: 0, litanies: S.litanyUses, soundings: 0,
         sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
         currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
       };
@@ -1368,6 +1419,7 @@
       shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours, bossMax: bossMax,
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
+      speakLitany: speakLitany, litanyCooldown: litanyCooldown,
       addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,

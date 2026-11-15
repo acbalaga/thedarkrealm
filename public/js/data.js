@@ -68,7 +68,8 @@ window.TDR_DATA = (function () {
     { id: 'names', name: 'Rite of Remembered Names', desc: 'Echoes gained ×1.15 per level.', base: 20, g: 1.7 },
     { id: 'hands', name: 'Rite of Many Hands', desc: 'Gathering by hand ×1.5 per level.', base: 10, g: 1.6 },
     { id: 'sleep', name: 'Rite of the Long Sleep', desc: 'The realm works 10% harder while you are away (base 50%).', base: 40, g: 3, max: 5 },
-    { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 }
+    { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 },
+    { id: 'breathing', name: 'Rite of the Long Breath', desc: 'Litanies return 5% sooner per level.', base: 30, g: 2.2, max: 6 }
   ];
 
   /* What the Seat tells the player to do next. The first entry whose `when` holds wins. `f` is the facts
@@ -111,6 +112,14 @@ window.TDR_DATA = (function () {
     { id: 'ltr', w: 35 },
     { id: 'rtl', w: 35 },
     { id: 'drop', w: 30 }
+  ];
+
+  /* Litanies: active abilities. `on` seconds of effect, `cd` seconds before the next. Starting values.
+     The Rite of the Long Breath multiplies cooldowns by 0.95 per level. */
+  var LITANIES = [
+    { id: 'teeth', glyph: '\u2694', name: 'Litany of Teeth', desc: 'Host Might \u00d73 for 15 seconds.', on: 15, cd: 300 },
+    { id: 'breath', glyph: '\u223f', name: 'Litany of the Held Breath', desc: 'A Lampwarden\'s timer does not run for 10 seconds.', on: 10, cd: 480 },
+    { id: 'undertow', glyph: '\u2248', name: 'Litany of the Undertow', desc: 'At once, gather 90 seconds of Gloom.', on: 0, cd: 420 }
   ];
 
   var PERKS = [
@@ -310,10 +319,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core'];
+  var LIVE_SYSTEMS = ['core', 'litanies'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

@@ -58,7 +58,7 @@ var POLICIES = {
   },
   active: {
     sessions: function () { return [[8 * HOUR, 1800], [12 * HOUR, 1800], [18 * HOUR, 1800], [21 * HOUR, 1800]]; },
-    clickRate: function () { return 8 * 0.2; }, snuff: 0.9,
+    clickRate: function () { return 8 * 0.2; }, snuff: 0.9, litanies: true,
     handValue: function () { return 8 * 0.2 * 7200 / DAY; }
   }
 };
@@ -113,6 +113,16 @@ function spendEchoes(e, sim) {
     }
     if (!pick || !e.buyRite(pick.id)) return;
   }
+}
+
+/* Teeth and the Held Breath on any Lampwarden the Host cannot otherwise beat; the Undertow whenever it is ready. */
+function speakLitanies(e) {
+  var S = e.S, f = e.facts();
+  if (f.boss && S.shaft % 10 === 0) {
+    if (S.lit.teeth.cd === 0) e.speakLitany('teeth', true);
+    if (S.lit.breath.cd === 0) e.speakLitany('breath', true);
+  }
+  if (S.lit.undertow.cd === 0) e.speakLitany('undertow', true);
 }
 
 function spendGlass(e, sim) {
@@ -218,6 +228,7 @@ function simulate(opts) {
         while (clickDebt >= 1) { e.gather(true); clickDebt -= 1; }
         spendGloom(e, policy, sim);
         if (e.S.unlocked.rites) spendEchoes(e, sim);
+        if (policy.litanies && e.S.unlocked.rites) speakLitanies(e);
         if (maybeUnlight(e, sim)) spendGlass(e, sim);
         else if (e.S.glass > 0) spendGlass(e, sim);
         noteMilestones(e, sim);

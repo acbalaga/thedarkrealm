@@ -538,6 +538,9 @@
     box.appendChild(title); box.appendChild(sub); box.appendChild(bar); box.appendChild(tbar); box.appendChild(stats);
     page.appendChild(box);
 
+    var litRow = el('div', 'litanies inline');
+    buildLitanies(litRow);
+    page.appendChild(litRow);
     var ctl = el('div', 'shaft-ctl');
     var prev = el('button', 'btn', '◀ Shallower'); prev.type = 'button';
     var next = el('button', 'btn', 'Deeper ▶'); next.type = 'button';
@@ -982,7 +985,7 @@
     o3.appendChild(c3); o3.appendChild(document.createTextNode(' Keyboard shortcuts'));
     c3.onchange = function () { S.opts.keys = c3.checked; };
     page.appendChild(o1); page.appendChild(o2); page.appendChild(o4); page.appendChild(o3);
-    page.appendChild(el('p', 'dim small', 'Keys: G Seat, R Realm, H Host, D Deep, L Ledger. Escape closes a dialog. On the Stillwell, Enter or Space gathers once per press.'));
+    page.appendChild(el('p', 'dim small', 'Keys: G Seat, R Realm, H Host, D Deep, L Ledger, 1 2 3 the Litanies. Escape closes a dialog. On the Stillwell, Enter or Space gathers once per press.'));
 
     page.appendChild(el('h3', 'sub-head', 'Version'));
     var upRow = el('div', 'btn-row');
@@ -1051,6 +1054,7 @@
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
+    updateLitanies(); litanyChips();
     var rh = $('return-hint');
     if (rh && affordNow) {
       var rt2 = new Date(engine.returnAt(wallNow())).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1078,6 +1082,58 @@
       if (n.textContent !== t) n.textContent = t;
       if (n.parentNode !== box) { if (key === 'hush') box.insertBefore(n, box.firstChild); else box.appendChild(n); }
     } else if (n.parentNode) n.parentNode.removeChild(n);
+  }
+
+  /* ---------- Litanies ----------
+     Three round buttons, shown on the Seat and under the bars on the Sunshafts page. Each shows its
+     cooldown as a fill, and its name carries its state for screen readers. */
+  var litanySets = [];
+  function words(sec) {
+    var s = Math.ceil(sec), m = Math.floor(s / 60), r = s % 60, out = [];
+    if (m) out.push(m + (m === 1 ? ' minute' : ' minutes'));
+    if (r || !m) out.push(r + (r === 1 ? ' second' : ' seconds'));
+    return out.join(' ');
+  }
+  function buildLitanies(host) {
+    var items = D.LITANIES.map(function (l) {
+      var b = el('button', 'litany'); b.type = 'button';
+      var g = el('span', 'litany-glyph', l.glyph); g.setAttribute('aria-hidden', 'true');
+      var cool = el('i', 'litany-cool');
+      b.appendChild(cool); b.appendChild(g);
+      b.title = l.desc;
+      guardRepeat(b);
+      b.addEventListener('click', function (ev) { if (engine.speakLitany(l.id, !!ev && ev.isTrusted === true)) render(); });
+      host.appendChild(b);
+      return { l: l, b: b, cool: cool };
+    });
+    litanySets.push(items);
+  }
+  function updateLitanies() {
+    var on = S.unlocked.rites;
+    $('litanies').hidden = !on;
+    litanySets.forEach(function (items) {
+      items.forEach(function (x) {
+        var t = S.lit[x.l.id], cd = engine.litanyCooldown(x.l);
+        x.b.disabled = t.cd > 0;
+        x.cool.style.height = (t.cd > 0 ? Math.min(100, t.cd / cd * 100) : 0).toFixed(0) + '%';
+        var label = x.l.name + ', ' + (t.cd > 0 ? words(t.cd) : 'ready');
+        if (x.b.getAttribute('aria-label') !== label) x.b.setAttribute('aria-label', label);
+        x.b.classList.toggle('lit-on', t.on > 0);
+      });
+    });
+  }
+  var litChips = {};
+  function litanyChips() {
+    D.LITANIES.forEach(function (l) {
+      var t = S.lit[l.id], box = $('buffs');
+      if (!litChips[l.id]) litChips[l.id] = el('span', 'buff litany-chip');
+      var n = litChips[l.id];
+      if (t.on > 0) {
+        var tx = l.name + ' · ' + Math.ceil(t.on) + 's';
+        if (n.textContent !== tx) n.textContent = tx;
+        if (n.parentNode !== box) box.appendChild(n);
+      } else if (n.parentNode) n.parentNode.removeChild(n);
+    });
   }
 
   /* ---------- the next objective ---------- */
@@ -1114,6 +1170,8 @@
     if (!S.opts.keys || ev.ctrlKey || ev.altKey || ev.metaKey || modalOpen) return;
     var t = ev.target;
     if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    var lit = { '1': 'teeth', '2': 'breath', '3': 'undertow' }[ev.key];
+    if (lit) { if (!ev.repeat && engine.speakLitany(lit, ev.isTrusted === true)) { ev.preventDefault(); render(); } return; }
     var id = KEY_DEST[(ev.key || '').toLowerCase()];
     if (!id) return;
     var d = NAVM.dest(id);
@@ -1351,6 +1409,7 @@
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
     });
     buildLanterns();
+    buildLitanies($('litanies'));
     document.addEventListener('keydown', trapFocus);
     document.addEventListener('keydown', onKey);
     guardRepeat($('strip-well'));

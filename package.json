@@ -10,7 +10,8 @@
     "check": "node tools/check.js",
     "sim": "node tools/sim.js",
     "e2e": "node --test \"tests/e2e/*.spec.js\"",
-    "stamp": "node tools/stamp-sw.js"
+    "stamp": "node tools/stamp-sw.js",
+    "baseline": "node tools/baseline.js"
   },
   "devDependencies": {
     "axe-core": "4.14.0",

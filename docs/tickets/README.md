@@ -30,7 +30,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | --- | --- | --- | --- |
 | [x] | [TDR-020](TDR-020-lantern-paths.md) Lanterns from both sides and down the chain | S | none |
 | [x] | [TDR-021](TDR-021-lantern-kinds-and-processions.md) Lantern kinds, Processions, streaks | M | 020, 004 |
-| [ ] | [TDR-022](TDR-022-litanies.md) Litanies | M | 004 |
+| [x] | [TDR-022](TDR-022-litanies.md) Litanies | M | 004 |
 | [ ] | [TDR-023](TDR-023-currents.md) Currents | M | 004, 010 |
 | [ ] | [TDR-024](TDR-024-vows.md) Vows and Keepings | M | 004, 023 |
 | [ ] | [TDR-025](TDR-025-stewardship-automation.md) Bulk buying and automation | S | 004 |
@@ -154,3 +154,5 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-021: baseline delta is in the change log of `docs/design/balance-baseline.md` (`npm run baseline` regenerates its numbers). The time of first possible Unlighting is steady (casual 15 min, active 25 min against 30). The rule-driven first Unlighting swung by about 40 percent in each direction, which is noise from the new random draws and the 70 percent rule rather than a systematic speed-up. `tests/balance.test.js` still passes unchanged.
 - TDR-021: Processions are not gated behind the ten-lantern unlock, so a new player's eighth lantern is a Procession. The ticket says "every eighth spawn" without a gate; say if it should wait. `S.lanternSpawns` is audited loosely against `lanterns` and `processions`. The Warden's Lamp falls back to a Stray Lantern outcome if the Host is no longer fighting a Lampwarden when it is snuffed. A Warden's Lamp spawns only while the Host is fighting a Lampwarden shaft.
 - TDR-021: lantern omens were appended to the end of the omen list so existing omen ids did not move, and are grouped with the other lantern omens by set name. No Codex text was added.
+- TDR-022: baseline delta is in the change log. `idle` and `casual` did not move. `active` got slower because the simulator's cheapest-Rite rule now buys the new Rite of the Long Breath, which does nothing for Gloom; the Litanies are used by `active` as specified. Owner decision: teach the policy to skip Rites that do not feed the economy, or leave it. Litanies are hotkeys 1 to 3 and the three buttons sit on the Seat and the Sunshafts page. `litanies` is now a live Codex system.
+- TDR-022: a `step()` is cut where a Litany's effect ends, so one long step and many short ones give the same result. The Undertow pays 90 seconds of the rate without a Deep Hush. Away time never uses a Litany and takes the full away seconds off every cooldown.

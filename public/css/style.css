@@ -468,3 +468,14 @@ details.entry[open] > summary { margin-bottom: var(--s-1); }
 .lantern.kind-warden { width: 62px; height: 76px; }
 .lantern.kind-warden span { width: 38px; height: 48px; margin-top: 14px; border-radius: 4px 4px 14px 14px; position: relative; }
 .lantern.kind-warden span::before { content: ""; position: absolute; left: -6px; right: -6px; top: -14px; height: 18px; border-radius: 50% 50% 0 0; background: var(--above); }
+
+/* litanies: three round 48 px buttons with a cooldown fill */
+.litanies { position: absolute; left: 0; right: 0; bottom: 62px; display: flex; gap: var(--s-3); justify-content: center; }
+.litanies.inline { position: static; margin: var(--s-3) 0; justify-content: flex-start; }
+.litany { position: relative; width: 48px; height: 48px; padding: 0; border-radius: 50%; overflow: hidden; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--gloom-deep); color: var(--gloom); touch-action: manipulation; }
+.litany:disabled { color: var(--dim); border-color: var(--line); cursor: default; }
+.litany-glyph { position: relative; font-size: var(--t-lg); }
+.litany-cool { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(168, 150, 255, .22); pointer-events: none; }
+.litany.lit-on { box-shadow: 0 0 14px 3px rgba(168, 150, 255, .5); }
+.litany-chip { border-color: var(--gloom); }
