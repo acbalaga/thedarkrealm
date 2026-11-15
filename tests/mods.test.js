@@ -190,7 +190,8 @@ function altered(e) {
     snd: { lines: [{ id: 'shelf', left: 1000 }], done: 5, dry: { shallows: 1, shelf: 2, trench: 3 } }, relics: { table1: 1, loft2: 1 },
     ended: true,
     seen: 1.7e12 + 5, debt: 1234, marks: 2, exportedAt: 1.6e12, remindedAt: 1.65e12,
-    opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false },
+    opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false, buyRite: 10 },
+    auto: { den: { gleaner: true }, rite: { edge: true } },
     nav: { dest: 'ledger', page: { realm: 'work', host: 'rite', deep: 'vows', ledger: 'codex' } }
   };
 }

@@ -13,10 +13,10 @@ Regenerate with `npm run sim -- --days 60 --seed 1`. Same seed, same output.
 | First Unlighting that yields Nightglass is possible (present) | never | 15 min | 25 min |
 | First Unlighting under the simulator's rule (present) | never | 10.9 h | 17.0 h |
 | First Unlighting under the rule (elapsed) | never | 11.9 days | 8.8 days |
-| Sunshaft 150 (present) | never | 11.7 h | 18.3 h |
-| Sunshaft 150 (elapsed) | never | 12.8 days | 9.3 days |
-| All perks (present) | never | 11.6 h | 18.0 h |
-| All perks (elapsed) | never | 12.7 days | 9.3 days |
+| Sunshaft 150 (present) | never | 12.5 h | 20.2 h |
+| Sunshaft 150 (elapsed) | never | 13.7 days | 10.3 days |
+| All perks (present) | never | 12.1 h | 20.0 h |
+| All perks (elapsed) | never | 13.4 days | 10.3 days |
 
 "Possible" is the first moment `glassGain()` is at least 1, which needs 1e9 Gloom in the fathom. The rule row is when the simulator's Unlighting rule fires: Nightglass per hour has fallen to 70 percent of its peak for the fathom, and the yield is at least 1 (and at least 20 percent of lifetime Nightglass after the first).
 
@@ -40,6 +40,9 @@ Regenerate with `npm run sim -- --days 60 --seed 1`. Same seed, same output.
 | TDR-031 | Almanac: moon, solstices, eclipses | 15 min | 8.7 h | 26 min | 21.0 h |
 | TDR-032 | Petitions and the Vigil | 15 min | 8.7 h | 25 min | 19.0 h |
 | TDR-033 | Soundings and Relics | 15 min | 10.9 h | 25 min | 17.0 h |
+| TDR-025 | Bulk Rites and three automation perks | 15 min | see table | 25 min | see table |
+
+TDR-025: the three new perks (Usher, Precentor, Chamberlain) are bought by the same cheapest-perk rule and their toggles are switched on by the policies. Sunshaft 150 and all perks arrive slightly later than before for `casual` (12 h against 11.7 h present) and about 10 percent later for `active`: every added perk is one more purchase before the full set, and automation matters mostly after the first fathoms, which these milestones do not measure. See the table for exact values.
 
 TDR-033: relic completion with the simulator's policy (it keeps the longest affordable line out and draws it up at every visit). `casual` completes all six sets in 36 days of elapsed time (33 hours present), inside the 30 to 90 day target, so no chances were tuned. `active` completes all six in about 24 days. Each set's time is in the raw output below as `Relic set: ...`. The rule-driven first Unlighting moved by under 25 percent in each policy, within the noise this measure has shown.
 
@@ -84,58 +87,62 @@ Perk: Deep Vein                                11.9d     10.9h     11.5d
 Perk: Echoing Halls                            11.9d     10.9h     11.5d
 Perk: Unsleeping                               11.9d     10.9h     11.5d
 Perk: Bound Hands                              11.9d     10.9h     11.5d
+Perk: The Usher                                11.9d     10.9h     11.5d
 Perk: Thrifty Dark                             11.9d     10.9h     11.5d
+Perk: A Second Line                            11.9d     10.9h     11.5d
 Perk: Remembered Road                          11.9d     10.9h     11.5d
 Perk: The Steward                              11.9d     10.9h     11.5d
-Perk: Rites Remembered                         11.9d     10.9h     11.5d
-Perk: A Second Line                            11.9d     10.9h     11.5d
-Perk: Lantern-Hunger                           12.3d     11.0h     11.9d
-Perk: The Queen's Reflection                   12.5d     11.4h     12.1d
-Perk: Further Down                             12.7d     11.6h     12.3d
-All perks                                      12.7d     11.6h     12.3d
-Sunshaft 150                                   12.8d     11.7h     12.4d
-Relic set: The Drowned Table                   14.4d     12.9h     13.9d
-Relic set: The Lamp Room                       15.5d     14.0h     15.1d
-Relic set: The Sleeper's Bed                   25.3d     22.9h     24.9d
-Relic set: The Queen's Things                  36.3d     33.0h     35.9d
-All six relic sets                             36.3d     33.0h     35.9d
+Perk: The Precentor                            11.9d     10.9h     11.5d
+Perk: Rites Remembered                         12.3d     11.1h     11.9d
+Perk: The Chamberlain                          13.3d     11.9h     12.9d
+Perk: Lantern-Hunger                           13.3d     11.9h     12.9d
+Perk: The Queen's Reflection                   13.3d     11.9h     12.9d
+Perk: Further Down                             13.4d     12.1h     13.0d
+All perks                                      13.4d     12.1h     13.0d
+Relic set: The Lamp Room                       13.5d     12.2h     13.1d
+Sunshaft 150                                   13.7d     12.5h     13.3d
+Relic set: The Drowned Table                   13.9d     12.8h     13.5d
+Relic set: The Queen's Things                  30.3d     27.5h     29.9d
+Relic set: The Sleeper's Bed                   40.3d     36.7h     39.9d
+All six relic sets                             40.3d     36.7h     39.9d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
 1            11.9d     10.9h       452      1.58      109
-2             9.0h        5m       129     14.33      109
-3             1.5h        7m       125     81.97      109
-4             3.0h        9m       307    103.19      119
-5             1.5h        7m       295    193.09      119
-6              88m        3m       694    471.40      129
-7             1.5h        5m       975    650.00      129
-8             1.5h        5m      1095    730.00      129
-9               3m        3m      3061  71094.19      139
-10              2m        2m      2832  72822.86      142
-11            4.4h       10m      8506   1925.28      159
-12              4m        4m      3695  55425.00      159
-13           32.9h       56m     34622   1051.28      169
-14            1.5h        5m     13615   9076.67      169
-15            1.5h        5m     14420   9613.33      169
-16            1.6h        9m     21763  13878.97      169
-17            2.9h        6m     22570   7697.96      169
-18            4.5h       15m     28150   6255.56      169
-19            3.0h       10m     32999  10999.67      169
-20            9.1h        8m     40811   4506.74      175
-21            8.9h       27m     46580   5207.70      179
-22           16.5h       30m     57760   3500.61      179
-23            9.0h       32m     68249   7554.08      179
-24           18.0h       33m     80925   4504.52      179
-25           19.5h       40m    101128   5186.05      179
-26           28.5h       70m    117391   4118.98      189
-27            2.8d      2.5h    142990   2118.37      189
-28           37.5h      1.7h    169752   4526.72      189
-29            3.9d      3.5h    203652   2189.81      189
-30            4.8d      4.3h    244241   2142.46      189
-31            4.8d      4.3h    292926   2536.16      189
-32            5.3d      5.0h    351878   2759.83      199
-33            4.7d      4.2h    422814   3758.35      199
+2             9.1h        8m        91     10.05      116
+3            23.9h       52m       968     40.42      119
+4             1.5h        5m      1350    900.00      129
+5             1.5h        5m      1524   1016.00      129
+6               2m        2m       919  23631.43      140
+7              88m        3m      3285   2248.29      140
+8               5m        5m      1729  21463.45      140
+9             8.9h       25m     15572   1745.85      159
+10            1.5h        5m      7957   5304.67      159
+11            9.0h        5m     17741   1971.22      159
+12            1.5h        5m     13516   9010.67      159
+13            1.5h        6m     13489   8853.31      159
+14            1.6h        8m     16121  10372.76      159
+15            4.4h       10m     25592   5787.14      169
+16            3.0h       10m     25419   8473.00      169
+17            3.0h       11m     30215  10006.81      169
+18            9.0h        4m     38014   4232.92      169
+19            4.5h       15m     44119   9804.22      169
+20            7.5h       25m     54008   7201.07      169
+21           12.1h       19m     62440   5176.37      179
+22           10.4h       31m     77232   7399.47      179
+23           13.5h       20m     96651   7159.33      179
+24           24.0h       55m    123078   5128.25      179
+25           36.0h      1.6h    138319   3842.19      189
+26            2.0d      1.8h    164442   3425.88      189
+27            2.5d      2.1h    200656   3344.27      189
+28            3.1d      2.9h    235349   3136.77      189
+29            2.9d      2.6h    293357   4253.35      189
+30            3.1d      2.9h    341837   4557.83      189
+31            3.9d      3.5h    409098   4396.87      199
+32            4.6d      4.5h    491960   4433.79      199
+33            4.4d      3.8h    621221   5916.39      199
+34            9.0d      8.3h    720233   3334.41      199
 
-End: 33 Unlightings, Sunshaft 199, 2531402 Nightglass, 2.3d present of 59.9d
+End: 34 Unlightings, Sunshaft 199, 4287954 Nightglass, 2.3d present of 59.9d
 
 Policy active, 60 days, seed 1
 
@@ -155,57 +162,65 @@ Perk: Deep Vein                                 8.8d     17.0h      7.9d
 Perk: Echoing Halls                             8.8d     17.0h      7.9d
 Perk: Unsleeping                                8.8d     17.0h      7.9d
 Perk: Bound Hands                               8.8d     17.0h      7.9d
+Perk: The Usher                                 8.8d     17.0h      7.9d
 Perk: Thrifty Dark                              8.8d     17.0h      7.9d
+Perk: A Second Line                             8.8d     17.0h      7.9d
 Perk: Remembered Road                           8.8d     17.0h      7.9d
 Perk: The Steward                               8.8d     17.0h      7.9d
-Perk: Rites Remembered                          8.8d     17.0h      7.9d
-Perk: A Second Line                             8.8d     17.0h      7.9d
-Perk: Lantern-Hunger                            8.8d     17.3h      7.9d
-Perk: The Queen's Reflection                    8.8d     17.5h      7.9d
-Perk: Further Down                              9.3d     18.0h      8.5d
-All perks                                       9.3d     18.0h      8.5d
-Sunshaft 150                                    9.3d     18.3h      8.5d
-Relic set: The Drowned Table                   12.5d     24.5h     11.7d
-Relic set: The Queen's Things                  19.5d     38.5h     18.7d
-Relic set: The Sleeper's Bed                   24.3d      2.0d     23.5d
+Perk: The Precentor                             8.8d     17.0h      7.9d
+Perk: Rites Remembered                          8.8d     17.3h      7.9d
+Perk: The Chamberlain                           8.8d     17.3h      7.9d
+Perk: Lantern-Hunger                            8.9d     17.5h      8.0d
+Perk: The Queen's Reflection                    8.9d     17.9h      8.1d
+Perk: Further Down                             10.3d     20.0h      9.5d
+All perks                                      10.3d     20.0h      9.5d
+Sunshaft 150                                   10.3d     20.2h      9.5d
+Relic set: The Drowned Table                   11.5d     22.5h     10.7d
+Relic set: The Queen's Things                  26.9d      2.2d     26.0d
+Relic set: The Sleeper's Bed                   27.5d      2.3d     26.7d
+Relic set: The Lamp Room                       55.3d      4.6d     54.5d
+All six relic sets                             55.3d      4.6d     54.5d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
 1             8.8d     17.0h       427      2.03      109
-2              18m       18m       280    946.48      116
-3              10m       10m       565   3390.00      116
-4               2m        2m       270   8100.00      125
-5            13.5h       30m      3720    275.47      139
-6               4m        4m      2914  49954.29      148
-7               5m        5m      5225  59714.29      148
-8               7m        7m      6497  59213.16      149
-9               5m        5m      4575  54900.00      154
-10              4m        4m      5780  92480.00      156
-11            3.6h        6m     14815   4116.87      159
-12             12m       12m      9842  48205.71      159
-13             17m       17m     11082  40298.18      168
-14            5.5h       75s     15385   2786.72      168
-15              9m        9m     17429 118385.66      169
-16             10m       10m     21586 128445.62      169
-17            2.7h       11m     28456  10599.23      169
-18           11.0h       30m     40494   3681.27      169
-19            4.0h       30m     39183   9795.75      169
-20            6.0h       31m     46781   7782.42      179
-21             22m       22m     55834 154024.83      179
-22           13.6h       38m     66247   4861.67      179
-23           10.2h       73m     79827   7814.47      179
-24           17.9h       87m     95993   5349.46      188
-25           20.2h      1.7h    115368   5703.44      189
-26           27.8h      2.3h    137834   4953.85      189
-27           20.2h      1.7h    165612   8203.13      189
-28           33.6h      2.6h    205803   6125.09      189
-29           27.0h      2.5h    240368   8902.52      189
-30           45.3h      3.8h    288746   6370.37      189
-31            2.1d      4.2h    346713   6842.08      199
-32            3.5d      6.5h    415622   5007.49      199
-33            6.0d     12.4h    498068   3449.12      199
-34            9.5d     19.4h    597789   2611.38      199
-35            5.0d     10.0h    717398   5977.56      199
-36           13.9d     27.5h    860607   2584.36      209
+2              19m       19m       267    832.21      118
+3             2.7h       11m       372    138.85      118
+4              24m       24m       750   1914.89      119
+5               4m        4m       698  11168.00      129
+6               2m        2m       504  12960.00      129
+7            34.5h      2.0h      7658    221.93      149
+8               3m        3m      3741  84172.50      149
+9               6m        6m      7631  79627.83      149
+10              9m        9m      8109  56684.27      155
+11              5m        5m      6608  80640.00      155
+12              6m        6m      7376  72749.59      159
+13            3.5h        2m      9593   2715.00      159
+14             18m       18m     10833  35453.45      159
+15              8m        8m     14441 106097.14      165
+16            5.6h        4m     18961   3411.27      165
+17              9m        9m     20231 131228.11      167
+18              9m        9m     25500 180000.00      169
+19             10m       10m     29216 175296.00      169
+20            2.8h       16m     36583  13209.51      169
+21           10.8h       16m     43026   3995.71      169
+22            4.0h       33m     50918  12589.62      169
+23            6.1h       38m     62992  10277.42      179
+24           13.8h       50m     83423   6033.61      179
+25           10.0h       60m     94115   9411.50      179
+26           14.3h       76m    108829   7632.66      179
+27           23.7h      1.7h    135642   5713.25      179
+28           24.0h      2.0h    160763   6698.46      189
+29           34.0h      3.0h    211723   6227.15      189
+30           27.1h      2.6h    234901   8657.29      189
+31           45.3h      3.8h    279315   6161.17      189
+32           37.5h      2.5h    338894   9029.48      189
+33            3.0d      6.0h    412366   5727.31      199
+34            2.5d      5.5h    488841   8013.79      199
+35            3.9d      7.5h    587701   6319.37      199
+36            4.0d      8.1h    702059   7304.77      199
+37            5.8d     11.7h    842452   6093.75      199
+38            5.0d      9.7h   1009774   8434.70      199
+39            9.3d     18.5h   1211707   5457.49      209
 
-End: 36 Unlightings, Sunshaft 209, 5163135 Nightglass, 5.0d present of 59.9d
+End: 39 Unlightings, Sunshaft 209, 7268940 Nightglass, 5.0d present of 59.9d
 ```

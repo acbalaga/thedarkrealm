@@ -239,6 +239,9 @@ window.TDR_DATA = (function () {
       { id: "bed4", set: "bed", name: "A Breath in a Jar", line: "It will not be opened." }
   ];
 
+  /* Automation thresholds: an automatic purchase never spends more than this share of the pool it draws from. */
+  var AUTO = { denShare: 0.10, riteShare: 0.25, chamberlainWin: 0.6 };
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -246,14 +249,17 @@ window.TDR_DATA = (function () {
     { id: 'halls', cost: 8, name: 'Echoing Halls', desc: 'Echoes gained ×2.' },
     { id: 'unsleeping', cost: 12, name: 'Unsleeping', desc: 'The realm works up to 24 hours while you are away (was 8).' },
     { id: 'bound', cost: 18, name: 'Bound Hands', desc: 'Four shadows gather at the Stillwell for you, every second.' },
+    { id: 'usher', cost: 25, name: 'The Usher', desc: 'Binds denizens for you, one at a time, while you are on the seat. Each denizen row gains a toggle. It spends at most a tenth of your Gloom on one.' },
     { id: 'thrift', cost: 30, name: 'Thrifty Dark', desc: 'Denizens cost 10% less.' },
+    { id: 'twolines', cost: 40, name: 'A Second Line', desc: 'Two Soundings can be out at once.' },
     { id: 'quick', cost: 45, name: 'Remembered Road', desc: 'Begin each fathom halfway to your deepest sealed shaft.' },
     { id: 'steward', cost: 70, name: 'The Steward', desc: 'Workings are bought for you the moment you can afford them.' },
+    { id: 'precentor', cost: 90, name: 'The Precentor', desc: 'Performs Rites for you while you are on the seat. Each Rite row gains a toggle. It spends at most a quarter of your Echoes on one.' },
     { id: 'remember', cost: 120, name: 'Rites Remembered', desc: 'Keep half of every Rite level through an Unlighting.' },
+    { id: 'chamberlain', cost: 160, name: 'The Chamberlain', desc: 'After a failed Lampwarden the Host returns as soon as it could win in 60% of the time (was 80%), and passes shafts it has already sealed at ten a second.' },
     { id: 'hunger', cost: 200, name: 'Lantern-Hunger', desc: 'Stray Lanterns yield three times as much and their boons last twice as long.' },
     { id: 'queen', cost: 600, name: 'The Queen\'s Reflection', desc: 'All Gloom, Might and Echoes ×5.' },
-    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' },
-    { id: 'twolines', cost: 40, name: 'A Second Line', desc: 'Two Soundings can be out at once.' }
+    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' }
   ];
 
   var BOSSES = {
@@ -441,6 +447,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, AUTO: AUTO, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

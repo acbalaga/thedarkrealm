@@ -20,7 +20,7 @@ Current formulas, the modifier model new systems must use, and the budget they s
 
 Useful calibration: radiance grows ×1.25 per shaft, so **×9.3 Might is worth about 10 shafts** and ×2 is worth about 3.
 
-Perk costs sum to 3,612 Nightglass. One run yielding 2,500 needs about 2e20 Gloom.
+Perk costs sum to 3,927 Nightglass (3,612 originally, plus A Second Line 40, The Usher 25, The Precentor 90, The Chamberlain 160). One run yielding 2,500 needs about 2e20 Gloom.
 
 ## 2. The modifier model (built in TDR-004)
 

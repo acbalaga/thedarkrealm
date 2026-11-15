@@ -101,6 +101,7 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        auto: { den: {}, rite: {} },   // toggles for The Usher and The Precentor; they grant nothing without the perk
         snd: { lines: [], done: 0, dry: { shallows: 0, shelf: 0, trench: 0 } },   // Soundings: lines out (seconds left), draws made, draws since a new relic per depth
         relics: {},
         pet: { day: 0, count: 0, playedAt: 0, active: '' },   // petitions: last granted local day, the Vigil (days granted), play time at the grant, the one in effect
@@ -114,7 +115,7 @@
         marks: 0,             // times the save failed its seal or its audit
         exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
         remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
-        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true },
+        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true, buyRite: 1 },
         nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
@@ -219,6 +220,9 @@
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
       s.opts.keys = !own(o.opts, 'keys') || o.opts.keys !== false;
       s.opts.chatter = !own(o.opts, 'chatter') || o.opts.chatter !== false;
+      if (own(o.opts, 'buyRite') && [1, 10, 25, 'max'].indexOf(o.opts.buyRite) >= 0) s.opts.buyRite = o.opts.buyRite;
+      D.DENIZENS.forEach(function (d) { if (o.auto && flag(o.auto.den, d.id)) s.auto.den[d.id] = true; });
+      D.RITES.forEach(function (r) { if (o.auto && flag(o.auto.rite, r.id)) s.auto.rite[r.id] = true; });
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
       if (own(o, 'nav') && o.nav !== null && typeof o.nav === 'object') {
         // Page ids are free text of a safe shape: later pages are registered by the interface, not known here.
@@ -702,6 +706,20 @@
       while (k > 0 && denCost(d, n, k) > S.gloom) k--;
       return Math.max(0, k);
     }
+    /* The cost of k more levels from `level`, through the same channel as one level. */
+    function riteCostN(r, level, k, s) {
+      s = s || S;
+      return Math.ceil(r.base * Math.pow(r.g, level) * (Math.pow(r.g, k) - 1) / (r.g - 1) * modsFor(s).riteCost);
+    }
+    function maxRite(r) {
+      var lvl = rl(r.id), room = r.max ? r.max - lvl : 1e6, k = 0;
+      if (room <= 0) return 0;
+      var base = r.base * Math.pow(r.g, lvl) * modsFor(S).riteCost;
+      k = Math.floor(Math.log(S.echoes * (r.g - 1) / base + 1) / Math.log(r.g));
+      k = Math.min(Math.max(0, k), room);
+      while (k > 0 && riteCostN(r, lvl, k) > S.echoes) k--;
+      return k;
+    }
     function riteCost(r, level, s) {
       s = s || S;
       if (level === undefined) level = s.rites[r.id] || 0;
@@ -1024,13 +1042,15 @@
       return true;
     }
 
-    function buyRite(id) {
+    function buyRite(id, count) {
       var r = RITE_BY[id];
       if (!r) return false;
-      var c = riteCost(r);
+      var k = count || 1;
+      if (r.max && rl(r.id) + k > r.max) return false;
+      var c = riteCostN(r, rl(r.id), k);
       if (S.echoes < c || (r.max && rl(r.id) >= r.max)) return false;
       S.echoes -= c;
-      S.rites[r.id] = rl(r.id) + 1;
+      S.rites[r.id] = rl(r.id) + k;
       afterChange();
       return true;
     }
@@ -1130,6 +1150,9 @@
       while (dt > 1e-9 && iter++ < 1e6) {
         if (S.march > 0) { var w = Math.min(dt, S.march); S.march -= w; dt -= w; continue; }
         var n = S.shaft, boss = n % 10 === 0;
+        if (perk('chamberlain') && S.autoAdvance && n < S.shaftTop) {        // already sealed this fathom: passed at ten a second
+          var sk = Math.min(dt, 0.1); dt -= sk; S.shaft = n + 1; S.shaftHp = shaftMaxHp(S.shaft); continue;
+        }
         if (!S.autoAdvance && !boss) {
           var per = shaftMaxHp(n) / mt + MARCH, kills = Math.floor(dt / per);
           if (kills >= 2) { addEchoes(shaftReward(n) * kills); S.sealed += kills; dt -= kills * per; continue; }
@@ -1580,12 +1603,25 @@
       }
 
       // After a failed Lampwarden the Host returns on its own once it can win.
-      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < bossMax() * 0.8) {
+      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < bossMax() * (perk('chamberlain') ? D.AUTO.chamberlainWin : 0.8)) {
         S.regroup = false; S.autoAdvance = true;
         placeShaft(S.shaftTop);
         say('The Host has grown heavier. It climbs again.');
       }
 
+      // The Usher and the Precentor work while the player is on the seat, and never spend more than their share of the pool.
+      if (perk('usher')) {
+        D.DENIZENS.forEach(function (d) {
+          if (S.auto.den[d.id] && denCost(d, cnt(d.id), 1) <= D.AUTO.denShare * S.gloom && S.gloom >= denCost(d, cnt(d.id), 1)) {
+            S.gloom -= denCost(d, cnt(d.id), 1); S.den[d.id] = cnt(d.id) + 1; recalc();
+          }
+        });
+      }
+      if (perk('precentor') && S.unlocked.rites) {
+        D.RITES.forEach(function (r) {
+          if (S.auto.rite[r.id] && !(r.max && rl(r.id) >= r.max) && riteCost(r) <= D.AUTO.riteShare * S.echoes) buyRite(r.id);
+        });
+      }
       if (perk('steward')) {
         var bought = false;
         for (var i = 0; i < UPGS.length; i++) {
@@ -1745,6 +1781,7 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
+      riteCostN: riteCostN, maxRite: maxRite,
       lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
       petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,
       phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,

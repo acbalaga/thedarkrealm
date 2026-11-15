@@ -448,6 +448,11 @@
       var desc = el('div', 'row-desc', d.desc);
       var info = el('div', 'row-info');
       mid.appendChild(title); mid.appendChild(desc); mid.appendChild(info);
+      var tog = el('label', 'check auto-toggle'), tcb = document.createElement('input'); tcb.type = 'checkbox';
+      tcb.setAttribute('aria-label', 'Bind ' + d.plural + ' automatically');
+      tcb.onchange = function () { if (tcb.checked) S.auto.den[d.id] = true; else delete S.auto.den[d.id]; };
+      tog.appendChild(tcb); tog.appendChild(document.createTextNode(' Bind automatically'));
+      mid.appendChild(tog);
       var btn = el('button', 'btn buy');
       btn.type = 'button';
       var bl = el('span', 'buy-label', 'Bind');
@@ -456,7 +461,7 @@
       btn.onclick = function () { engine.buyDenizen(d.id); buyAgain(); };
       row.appendChild(glyph); row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
-      return { d: d, i: i, row: row, count: count, info: info, btn: btn, bl: bl, bc: bc };
+      return { d: d, i: i, row: row, count: count, info: info, btn: btn, bl: bl, bc: bc, tog: tog, tcb: tcb };
     });
 
     return function () {
@@ -471,6 +476,7 @@
         var vis = r.i === 0 || n > 0 || cnt(D.DENIZENS[r.i - 1].id) > 0 || S.runGloom >= d.cost * 0.25;
         r.row.hidden = !vis;
         if (!vis) return;
+        r.tog.hidden = !perk('usher'); r.tcb.checked = !!S.auto.den[d.id];
         var k = S.opts.buy === 'max' ? Math.max(1, maxBuy(d, n)) : S.opts.buy;
         var cost = denCost(d, n, k);
         r.count.textContent = n;
@@ -488,6 +494,9 @@
   /* Workings */
   function buildWorkings(page) {
     page.appendChild(el('p', 'lede', 'Lasting improvements to the realm, paid for in Gloom. New workings appear as your denizens multiply.'));
+    var all = el('button', 'btn', 'Complete all'); all.type = 'button'; all.hidden = true;
+    all.onclick = function () { availableUpgs().forEach(function (u) { engine.buyUpg(u.id); }); buyAgain(); };
+    page.appendChild(all);
     var grid = el('div', 'grid');
     var empty = el('p', 'empty', 'Nothing to work on yet. Bind more denizens.');
     var owned = el('p', 'dim small');
@@ -520,6 +529,7 @@
         if (affordNow) afford(x.b, 'gloom', S.gloom, x.u.cost, C.gps);
       });
       empty.hidden = list.length > 0;
+      all.hidden = list.filter(function (u) { return S.gloom >= u.cost; }).length < 2;
       var n = 0; for (var k in S.upg) n++;
       owned.textContent = n + ' of ' + UPGS.length + ' workings complete this fathom.';
     };
@@ -598,7 +608,22 @@
 
   /* Rites */
   function buildRites(page) {
-    page.appendChild(el('p', 'lede', 'Echoes are scraps of the living, carried down by their shadows. The Cantors can spend them on rites. Rites last until the next Unlighting.'));
+    var head = el('div', 'page-head');
+    head.appendChild(el('p', 'lede', 'Echoes are scraps of the living, carried down by their shadows. The Cantors can spend them on rites. Rites last until the next Unlighting.'));
+    var modes = el('div', 'seg');
+    modes.setAttribute('role', 'radiogroup');
+    modes.setAttribute('aria-label', 'How many levels to perform at once');
+    var modeBtns = [];
+    [1, 10, 25, 'max'].forEach(function (m) {
+      var b = el('button', 'seg-btn', m === 'max' ? 'Max' : '\u00d7' + m);
+      b.type = 'button'; b.setAttribute('role', 'radio');
+      b.onclick = function () { S.opts.buyRite = m; render(); };
+      modes.appendChild(b);
+      modeBtns.push({ m: m, b: b });
+    });
+    head.appendChild(modes);
+    rovingKeys(modes, '.seg-btn', function (n) { n.click(); });
+    page.appendChild(head);
     var rows = D.RITES.map(function (r) {
       var row = el('div', 'row');
       var mid = el('div', 'row-mid');
@@ -608,22 +633,38 @@
       title.appendChild(lvl);
       mid.appendChild(title);
       mid.appendChild(el('div', 'row-desc', r.desc));
+      var tog = el('label', 'check auto-toggle'), tcb = document.createElement('input'); tcb.type = 'checkbox';
+      tcb.setAttribute('aria-label', 'Perform ' + r.name + ' automatically');
+      tcb.onchange = function () { if (tcb.checked) S.auto.rite[r.id] = true; else delete S.auto.rite[r.id]; };
+      tog.appendChild(tcb); tog.appendChild(document.createTextNode(' Perform automatically'));
+      mid.appendChild(tog);
       var btn = el('button', 'btn buy echo'); btn.type = 'button';
       var bl = el('span', 'buy-label', 'Perform'); var bc = el('span', 'buy-cost');
       btn.appendChild(bl); btn.appendChild(bc);
-      btn.onclick = function () { engine.buyRite(r.id); buyAgain(); };
+      btn.onclick = function () { var k = riteK(r); engine.buyRite(r.id, k); buyAgain(); };
       row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
-      return { r: r, lvl: lvl, btn: btn, bc: bc, bl: bl };
+      return { r: r, lvl: lvl, btn: btn, bc: bc, bl: bl, tog: tog, tcb: tcb };
     });
+    /* How many levels the button performs: the chosen amount, or the most affordable for Max, never past the cap. */
+    function riteK(r) {
+      var room = r.max ? r.max - rl(r.id) : 1e6, m = S.opts.buyRite;
+      if (m === 'max') return Math.max(1, Math.min(room, engine.maxRite(r)));
+      return Math.max(1, Math.min(m, room));
+    }
     return function () {
+      modeBtns.forEach(function (x) {
+        var on = S.opts.buyRite === x.m;
+        x.b.classList.toggle('on', on); x.b.setAttribute('aria-checked', on ? 'true' : 'false'); x.b.tabIndex = on ? 0 : -1;
+      });
       rows.forEach(function (x) {
-        var l = rl(x.r.id), maxed = x.r.max && l >= x.r.max;
+        var l = rl(x.r.id), maxed = x.r.max && l >= x.r.max, k = maxed ? 1 : riteK(x.r), cost = maxed ? 0 : engine.riteCostN(x.r, l, k);
         x.lvl.textContent = 'Lv ' + l + (x.r.max ? ' / ' + x.r.max : '');
-        x.bl.textContent = maxed ? 'Complete' : 'Perform';
-        setPrice(x.bc, 'echo', maxed ? '' : fmt(riteCost(x.r)) + ' Echoes');
-        x.btn.disabled = maxed || S.echoes < riteCost(x.r);
-        if (affordNow) afford(x.btn, 'echo', maxed ? 0 : S.echoes, maxed ? 0 : riteCost(x.r), echoMeter.rate());
+        x.bl.textContent = maxed ? 'Complete' : (S.opts.buyRite === 'max' && engine.maxRite(x.r) < 1 ? 'Perform' : 'Perform \u00d7' + k);
+        setPrice(x.bc, 'echo', maxed ? '' : fmt(cost) + ' Echoes');
+        x.btn.disabled = maxed || S.echoes < cost;
+        x.tog.hidden = !perk('precentor'); x.tcb.checked = !!S.auto.rite[x.r.id];
+        if (affordNow) afford(x.btn, 'echo', maxed ? 0 : S.echoes, maxed ? 0 : cost, echoMeter.rate());
       });
     };
   }

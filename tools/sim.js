@@ -256,6 +256,8 @@ function simulate(opts) {
         if (e.S.unlocked.rites) spendEchoes(e, sim);
         if (policy.litanies && e.S.unlocked.rites) speakLitanies(e);
         grantBest(e, policy);
+        if (e.perk('usher')) sim.D.DENIZENS.forEach(function (d) { e.S.auto.den[d.id] = true; });
+        if (e.perk('precentor')) sim.D.RITES.forEach(function (r) { e.S.auto.rite[r.id] = true; });
         sounding(e);
         if (maybeUnlight(e, sim)) spendGlass(e, sim);
         else if (e.S.glass > 0) spendGlass(e, sim);

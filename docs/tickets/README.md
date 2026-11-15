@@ -33,7 +33,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | [x] | [TDR-022](TDR-022-litanies.md) Litanies | M | 004 |
 | [ ] | [TDR-023](TDR-023-currents.md) Currents | M | 004, 010 |
 | [ ] | [TDR-024](TDR-024-vows.md) Vows and Keepings | M | 004, 023 |
-| [ ] | [TDR-025](TDR-025-stewardship-automation.md) Bulk buying and automation | S | 004 |
+| [x] | [TDR-025](TDR-025-stewardship-automation.md) Bulk buying and automation | S | 004 |
 
 ### Retention
 
@@ -163,3 +163,4 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-032: the Seat badge for a waiting offer is the ordinary dot on the Seat item of the phone bar (gold stays for lanterns). Not done: a separate stats line for "days missed" (deliberately; there is none).
 - TDR-033: all six sets complete for `casual` in 36 days (target 30 to 90), so the draw chances (0.35 plus 0.15 per dry draw) are unchanged. A sounding's time runs in full while away (the away cap does not apply) and a slack line waits for ever, also across an Unlighting. The perk `twolines` ("A Second Line", 40 Nightglass) was added as the last perk. The Whispers and relic names are verbatim from the bible. A new Codex system `soundings` is live (six set pages plus the Soundings page). The Trench is gated on having let go once, the Shelf on 25 Tidewells bound at the time of lowering. Added a modifier channel `lanternYield` for the Lamp Room relics.
 - TDR-033: one case is not handled specially: if both sets at a depth are complete the draw pays double Echoes and never adds a relic, as the ticket says, but the Trench's second set can still be missing relics from the Shelf (they are separate depths, so this is by design).
+- TDR-025: the ticket says the Chamberlain makes the Host return "as soon as it could win in 60% of the allowed time (was 80%)". Taken literally that is a stricter margin, so with the perk the Host waits longer before setting out again. I built it literally and a test pins it; if the intent was an earlier return, the constant is `AUTO.chamberlainWin` in `data.js` (use 1.0 or more). The Usher spends at most 10 percent of Gloom on a single bind and the Precentor 25 percent of Echoes on a single level; both only while the page is open. `ECONOMY.md` now quotes 3,927 Nightglass for all perks. Rites have the same ×1, ×10, ×25, Max control as Denizens; "Complete all" appears on the Workings page when two or more are affordable.
