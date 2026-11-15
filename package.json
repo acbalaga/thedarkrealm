@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "node tools/check.js",
-    "sim": "node tools/sim.js"
+    "sim": "node tools/sim.js",
+    "e2e": "node --test \"tests/e2e/*.spec.js\""
   },
   "devDependencies": {
     "wrangler": "4.162.0"

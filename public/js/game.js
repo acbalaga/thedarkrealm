@@ -44,6 +44,19 @@
     return e;
   }
 
+  /* Builds a node without ever parsing a string as HTML. props may set className, id, rows,
+     readOnly and type. children is a string (a text node), a node, or an array of those. */
+  function h(tag, props, children) {
+    var n = document.createElement(tag), k;
+    if (props) for (k in props) n[k] = props[k];
+    (function add(c) {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) { c.forEach(add); return; }
+      n.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+    })(children);
+    return n;
+  }
+
   var logLines = [];
   function say(msg) {
     logLines.unshift(msg);
@@ -56,8 +69,9 @@
   }
 
   var modalQueue = [], modalOpen = false;
-  function modal(title, html, btns) {
-    modalQueue.push({ title: title, html: html, btns: btns || [{ label: 'Close', primary: true }] });
+  /* body: a node or an array of nodes, built with h(). */
+  function modal(title, body, btns) {
+    modalQueue.push({ title: title, body: body, btns: btns || [{ label: 'Close', primary: true }] });
     if (!modalOpen) nextModal();
   }
   function nextModal() {
@@ -65,9 +79,9 @@
     if (!m) { $('modal').hidden = true; modalOpen = false; return; }
     modalOpen = true;
     $('modal-title').textContent = m.title;
-    $('modal-body').innerHTML = m.html;
+    $('modal-body').replaceChildren.apply($('modal-body'), [].concat(m.body));
     var box = $('modal-btns');
-    box.innerHTML = '';
+    box.replaceChildren();
     m.btns.forEach(function (b) {
       var btn = el('button', 'btn' + (b.primary ? ' primary' : '') + (b.danger ? ' danger' : ''), b.label);
       btn.type = 'button';
@@ -83,12 +97,12 @@
   }
 
   function showEnding() {
-    modal('The First Lamp',
-      '<p>The last shaft closes behind your Host like an eye.</p>' +
-      '<p>There is one light left in Vesperdeep now, and it is yours: a small lamp at the foot of the throne, burning low and steady. ' +
-      'By it you can see the seat. By it, the seat casts a shadow, long and patient, in the shape of a queen.</p>' +
-      '<p>The Auric Concord will cut no more shafts. They have nothing left to lower.</p>' +
-      '<p class="dim">The realm is quiet. You may keep it as long as you like. The dark goes on down, and so can you.</p>',
+    modal('The First Lamp', [
+      h('p', null, 'The last shaft closes behind your Host like an eye.'),
+      h('p', null, 'There is one light left in Vesperdeep now, and it is yours: a small lamp at the foot of the throne, burning low and steady. ' +
+        'By it you can see the seat. By it, the seat casts a shadow, long and patient, in the shape of a queen.'),
+      h('p', null, 'The Auric Concord will cut no more shafts. They have nothing left to lower.'),
+      h('p', { className: 'dim' }, 'The realm is quiet. You may keep it as long as you like. The dark goes on down, and so can you.')],
       [{ label: 'Keep the chair warm', primary: true }]);
   }
 
@@ -213,7 +227,7 @@
     var cards = [];
 
     function rebuild(list) {
-      grid.innerHTML = '';
+      grid.replaceChildren();
       cards = list.map(function (u) {
         var b = el('button', 'card');
         b.type = 'button';
@@ -341,8 +355,9 @@
     btn.onclick = function () {
       var g = glassGain();
       if (g < 1) return;
-      modal('Let the realm go?', '<p>Vesperdeep will sink a fathom. You will begin again in a shallow Stillwell, carrying <b>' + fmt(g) +
-        '</b> new Nightglass.</p><p class="dim">Each Nightglass ever earned gives +5% Gloom and Might, for good.</p>',
+      modal('Let the realm go?', [
+        h('p', null, ['Vesperdeep will sink a fathom. You will begin again in a shallow Stillwell, carrying ', h('b', null, fmt(g)), ' new Nightglass.']),
+        h('p', { className: 'dim' }, 'Each Nightglass ever earned gives +5% Gloom and Might, for good.')],
         [{ label: 'Not yet' }, { label: 'Let go', primary: true, cb: function () { engine.unlight(); render(); } }]);
     };
     box.appendChild(gainEl); box.appendChild(nextEl); box.appendChild(btn);
@@ -410,7 +425,7 @@
     return function () {
       if (!engine.dirty.codex) return;
       engine.dirty.codex = false;
-      list.innerHTML = '';
+      list.replaceChildren();
       var n = 0;
       D.CODEX.forEach(function (c) {
         if (!S.codex[c.id]) return;
@@ -454,9 +469,11 @@
     function mk(label, fn, cls) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.onclick = fn; row.appendChild(b); return b; }
     mk('Save now', function () { say(engine.save() ? 'The Scribes have written it down.' : 'This browser refused to store the save.'); });
     mk('Export save', function () {
-      modal('Export save', '<p>Copy this text and keep it somewhere safe.</p><textarea id="io" readonly rows="6"></textarea>',
+      var ta = h('textarea', { id: 'io', readOnly: true, rows: 6 });
+      ta.value = engine.exportText();
+      modal('Export save', [h('p', null, 'Copy this text and keep it somewhere safe.'), ta],
         [{ label: 'Copy', cb: function () {
-          var t = $('io'); t.select();
+          var t = ta; t.select();
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).catch(function () {});
             else document.execCommand('copy');
@@ -464,20 +481,20 @@
           return false;
         } },
           { label: 'Done', primary: true }]);
-      $('io').value = engine.exportText();
     });
     mk('Import save', function () {
-      modal('Import save', '<p>Paste an exported save. It replaces the current realm.</p><textarea id="io" rows="6"></textarea><p id="io-err" class="warn"></p>',
+      var ta = h('textarea', { id: 'io', rows: 6 }), err = h('p', { id: 'io-err', className: 'warn' });
+      modal('Import save', [h('p', null, 'Paste an exported save. It replaces the current realm.'), ta, err],
         [{ label: 'Cancel' }, { label: 'Import', primary: true, cb: function () {
-          var r = engine.importText($('io').value);
+          var r = engine.importText(ta.value);
           S = engine.S;
-          if (!r.ok) { $('io-err').textContent = r.error; return false; }
+          if (!r.ok) { err.textContent = r.error; return false; }
           wiping = true;
           location.reload();
         } }]);
     });
     mk('Erase everything', function () {
-      modal('Erase the realm?', '<p>This deletes all progress, including Nightglass, omens and the codex. It cannot be undone.</p>',
+      modal('Erase the realm?', h('p', null, 'This deletes all progress, including Nightglass, omens and the codex. It cannot be undone.'),
         [{ label: 'Keep it', primary: true }, { label: 'Erase', danger: true, cb: function () {
           wiping = true;
           engine.erase();
@@ -520,11 +537,8 @@
     tabBtns.codex.classList.toggle('has-dot', S.codexUnread > 0);
     tabBtns.unl.classList.toggle('has-dot', S.tab !== 'unl' && S.unlightings === 0 && glassGain() >= 1);
 
-    var b = [];
-    if (S.buffs.hush > 0) b.push('<span class="buff">Deep Hush ×5 · ' + Math.ceil(S.buffs.hush) + 's</span>');
-    if (S.buffs.teeth > 0) b.push('<span class="buff teeth">Bared Teeth ×5 · ' + Math.ceil(S.buffs.teeth) + 's</span>');
-    var bh = b.join('');
-    if (bh !== lastBuff) { $('buffs').innerHTML = bh; lastBuff = bh; }
+    setBuff('hush', 'Deep Hush', S.buffs.hush);
+    setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     syncLantern();
     var title = fmt(S.gloom) + ' Gloom · The Dark Realm';
@@ -532,7 +546,16 @@
 
     if (updaters[S.tab]) updaters[S.tab]();
   }
-  var lastBuff = '';
+  /* Two chips that are kept and updated in place, never rebuilt. Hush sits above Teeth. */
+  var buffEls = { hush: el('span', 'buff'), teeth: el('span', 'buff teeth') };
+  function setBuff(key, label, secs) {
+    var n = buffEls[key], box = $('buffs');
+    if (secs > 0) {
+      var t = label + ' ×5 · ' + Math.ceil(secs) + 's';
+      if (n.textContent !== t) n.textContent = t;
+      if (n.parentNode !== box) { if (key === 'hush') box.insertBefore(n, box.firstChild); else box.appendChild(n); }
+    } else if (n.parentNode) n.parentNode.removeChild(n);
+  }
 
   /* ---------- the Stillwell ---------- */
 
@@ -615,13 +638,14 @@
   var wiping = false;
 
   function showAway(r) {
-    var lines = ['<p>You were away for <b>' + fmtTime(r.sec) + '</b>. The realm kept working at ' + Math.round(r.pace * 100) +
-      '% of its pace' + (r.sec > r.credited ? ', for the first ' + r.capHours + ' hours' : '') + '.</p><ul class="away">'];
-    lines.push('<li><b>' + fmt(r.gloom) + '</b> Gloom gathered</li>');
-    if (r.echoes > 0) lines.push('<li><b>' + fmt(r.echoes) + '</b> Echoes recovered</li>');
-    if (r.bestShaft > 0) lines.push('<li>Sunshafts sealed down to <b>' + r.bestShaft + '</b></li>');
-    lines.push('</ul>');
-    modal('While the realm slept', lines.join(''), [{ label: 'Take the seat', primary: true }]);
+    var items = [h('li', null, [h('b', null, fmt(r.gloom)), ' Gloom gathered'])];
+    if (r.echoes > 0) items.push(h('li', null, [h('b', null, fmt(r.echoes)), ' Echoes recovered']));
+    if (r.bestShaft > 0) items.push(h('li', null, ['Sunshafts sealed down to ', h('b', null, String(r.bestShaft))]));
+    modal('While the realm slept', [
+      h('p', null, ['You were away for ', h('b', null, fmtTime(r.sec)), '. The realm kept working at ' + Math.round(r.pace * 100) +
+        '% of its pace' + (r.sec > r.credited ? ', for the first ' + r.capHours + ' hours' : '') + '.']),
+      h('ul', { className: 'away' }, items)],
+      [{ label: 'Take the seat', primary: true }]);
   }
 
   function frame() {
@@ -663,12 +687,19 @@
       if (e.key !== engine.KEY || e.newValue === null || engine.halted) return;
       engine.halt();
       modalQueue.length = 0;
-      modal('The realm is open elsewhere', '<p>Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.</p>',
+      modal('The realm is open elsewhere', h('p', null, 'Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.'),
         [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }]);
     });
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
+      /* register() is a script-URL sink. Trusted Types only lets this one fixed URL through. */
+      var swUrl = 'sw.js';
+      if (window.trustedTypes && trustedTypes.createPolicy) {
+        swUrl = trustedTypes.createPolicy('tdr', {
+          createScriptURL: function (u) { if (u === 'sw.js') return u; throw new TypeError('blocked'); }
+        }).createScriptURL('sw.js');
+      }
+      navigator.serviceWorker.register(swUrl).catch(function () {});
     }
   }
 

@@ -45,7 +45,7 @@ Or deploy on every push: in the Cloudflare dashboard go to Workers & Pages, Crea
 | File | Purpose |
 | --- | --- |
 | `wrangler.jsonc` | Worker name, compatibility date, assets folder, 404 handling |
-| `public/_headers` | Security headers: CSP (with `frame-ancestors`), `nosniff`, no framing, no referrer, and `no-cache` on the service worker |
+| `public/_headers` | Security headers: CSP (with `frame-ancestors`), `nosniff`, no framing, no referrer, HSTS, cross-origin isolation headers, a narrowed Permissions-Policy, and `no-cache` on the service worker |
 | `public/404.html` | Not-found page |
 | `package.json` | Pins Wrangler and provides `dev` and `deploy` scripts. The game itself has no dependencies. |
 
@@ -85,7 +85,7 @@ Known limit: winding the device clock forward and leaving it there still earns o
 
 - A Content-Security-Policy allows scripts, styles and images from the game's own folder only. No inline script, no `eval`, no remote hosts, no forms. It is set in the page itself, and again as a response header on Cloudflare, where it also forbids embedding the game in another site.
 - Imported saves are size-limited, format-checked, and copied field by field against a fixed schema. Nothing is merged, so crafted keys such as `__proto__` are never touched.
-- All dynamic text is written with `textContent`. The few HTML strings are built from fixed text and formatted numbers.
+- All dynamic text is written with `textContent` or text nodes. The game never parses a string as HTML, and Trusted Types (`require-trusted-types-for 'script'`) makes the browser refuse it if a future change tries. The only policy, `tdr`, allows one fixed service worker URL.
 - The service worker handles same-origin GET requests only and stores only complete, successful, same-origin responses.
 - No network requests, analytics, cookies or third-party code.
 
