@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Everything loads from this folder. No inline script, no remote hosts, no eval. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#07060d">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dark Realm">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="The Dark Realm. An offline idle game about keeping the dark quiet.">
+<title>The Dark Realm</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand">
+    <img class="logo" src="icon.svg" alt="" width="40" height="40">
+    <div>
+      <h1>The Dark Realm</h1>
+      <p id="fathom">Vesperdeep, the first fathom</p>
+    </div>
+  </div>
+  <div class="resources">
+    <div class="res res-gloom"><span class="res-label">Gloom</span><span class="res-val" id="r-gloom">0</span><span class="res-sub" id="r-gps">0 /s</span></div>
+    <div class="res res-echo" id="res-echo" hidden><span class="res-label">Echoes</span><span class="res-val" id="r-echo">0</span><span class="res-sub" id="r-might">Might 1</span></div>
+    <div class="res res-glass" id="res-glass" hidden><span class="res-label">Nightglass</span><span class="res-val" id="r-glass">0</span><span class="res-sub" id="r-glassb">+0%</span></div>
+  </div>
+</header>
+
+<main>
+  <section id="scene" aria-label="The Stillwell">
+    <div class="scene-box" id="scene-box">
+      <canvas id="motes" aria-hidden="true"></canvas>
+      <button id="well" type="button" aria-label="Gather Gloom from the Stillwell">
+        <span class="well-ring r1"></span><span class="well-ring r2"></span><span class="well-core"></span>
+      </button>
+      <button id="lantern" type="button" hidden aria-label="Snuff the Stray Lantern"><span></span></button>
+      <div id="floaters" aria-hidden="true"></div>
+      <p class="well-hint" id="well-hint">Touch the Stillwell to gather Gloom</p>
+      <div id="buffs"></div>
+    </div>
+    <div class="log-box">
+      <h2>Whispers</h2>
+      <ul id="log" aria-live="polite"></ul>
+    </div>
+  </section>
+
+  <section id="panel">
+    <nav id="tabs" role="tablist"></nav>
+    <div id="pages"></div>
+  </section>
+</main>
+
+<div id="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div id="modal-btns"></div>
+  </div>
+</div>
+
+<noscript><p class="noscript">The Dark Realm needs JavaScript to run. Everything stays on your device.</p></noscript>
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
