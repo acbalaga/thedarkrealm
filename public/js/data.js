@@ -80,6 +80,8 @@ window.TDR_DATA = (function () {
       text: function () { return 'Gather 10 Gloom and bind a Wisp-Gleaner.'; } },
     { id: 'offer', when: function (f) { return f.offer; }, go: { dest: 'seat', page: 'seat' },
       text: function () { return 'The denizens have intentions.'; } },
+    { id: 'slack', when: function (f) { return f.slack; }, go: { dest: 'host', page: 'soundings' },
+      text: function () { return 'Draw up the line.'; } },
     { id: 'working', when: function (f) { return !!f.work; }, go: { dest: 'realm', page: 'work' },
       text: function (f) { return 'A working is ready: ' + f.work + '.'; } },
     { id: 'lampwarden', when: function (f) { return !!f.boss; }, go: { dest: 'host', page: 'shaft' },
@@ -192,6 +194,51 @@ window.TDR_DATA = (function () {
     ]
   };
 
+  /* Soundings: lines lowered into the Sunless Sea. `hours` out, `cost` seconds of Gloom per second to lower, the two
+     sets they draw from. Starting values. Relics, sets and lines are verbatim from docs/design/LORE_BIBLE.md section 7. */
+  var SOUNDINGS = {
+    depths: [
+      { id: 'shallows', name: 'The Shallows', hours: 1, cost: 60, sets: ['table', 'lamp'], unlock: 'always', brings: 'things from a table, things from a lamp room' },
+      { id: 'shelf', name: 'The Shelf', hours: 4, cost: 600, sets: ['survey', 'loft'], unlock: 'tide25', brings: 'a surveyor\'s instruments, things from a choir loft' },
+      { id: 'trench', name: 'The Trench', hours: 12, cost: 3600, sets: ['queen', 'bed'], unlock: 'unlight', brings: 'things that were hers, things from under something asleep' }
+    ],
+    chance: 0.35, perDry: 0.15, sealsPerHour: 6
+  };
+  var RELIC_SETS = [
+      { id: "table", name: "The Drowned Table", stat: "echo", each: 0.02, bonus: 1.25 },
+      { id: "survey", name: "The Surveyor's Kit", stat: "might", each: 0.02, bonus: 1.25 },
+      { id: "loft", name: "The Choir Loft", stat: "gloom", each: 0.02, bonus: 1.25 },
+      { id: "lamp", name: "The Lamp Room", stat: "lanternYield", each: 0.02, bonus: 1.25 },
+      { id: "queen", name: "The Queen's Things", stat: "glass", each: 0.02, bonus: 1.1 },
+      { id: "bed", name: "The Sleeper's Bed", stat: "awayPace", each: 0.01, bonus: 0.06 }
+  ];
+  var RELICS = [
+      { id: "table1", set: "table", name: "A Cup, Whole", line: "The glaze is worn where a thumb rested." },
+      { id: "table2", set: "table", name: "A Spoon Worn on One Side", line: "Left-handed. Patient." },
+      { id: "table3", set: "table", name: "A Salt Cellar, Still Full", line: "Nobody down here will taste it to check." },
+      { id: "table4", set: "table", name: "A Chair Leg", line: "The other three are still looking for it." },
+      { id: "survey1", set: "survey", name: "Askerel's Plumb Line", line: "It hangs straight in any wind." },
+      { id: "survey2", set: "survey", name: "A Level With No Bubble", line: "It says down." },
+      { id: "survey3", set: "survey", name: "A Chain Link Stamped With a Sun", line: "The first one that broke." },
+      { id: "survey4", set: "survey", name: "A Waxed Map Case", line: "Empty. The map was the dangerous part." },
+      { id: "loft1", set: "loft", name: "A Fork That Hums at Dusk", line: "It does not need striking." },
+      { id: "loft2", set: "loft", name: "A Page of Rests", line: "The hardest piece they own." },
+      { id: "loft3", set: "loft", name: "A Baton of Black Wood", line: "It is heavier at the end of the bar." },
+      { id: "loft4", set: "loft", name: "A Cracked Bell", line: "It rings the crack." },
+      { id: "lamp1", set: "lamp", name: "A Wick Never Lit", line: "Kept on its own shelf." },
+      { id: "lamp2", set: "lamp", name: "A Snuffer", line: "Well used. Somebody enjoyed it." },
+      { id: "lamp3", set: "lamp", name: "A Tin of Shadow-Tallow", line: "Sealed. It will stay sealed." },
+      { id: "lamp4", set: "lamp", name: "A Lens With a Thumbprint Inside", line: "Nobody can say how." },
+      { id: "queen1", set: "queen", name: "A Comb", line: "One long dark hair." },
+      { id: "queen2", set: "queen", name: "A Ring Too Large for Any Hand", line: "It fits the arm of the seat." },
+      { id: "queen3", set: "queen", name: "A Key to No Door", line: "The Wardens watch it." },
+      { id: "queen4", set: "queen", name: "A Glazier's Diamond", line: "For cutting panes." },
+      { id: "bed1", set: "bed", name: "A Tooth the Size of a Door", line: "It is a small one." },
+      { id: "bed2", set: "bed", name: "A Scale, Still Warm", line: "Do not hold it long." },
+      { id: "bed3", set: "bed", name: "A Dream on a Slate", line: "The Scribes turned it face down." },
+      { id: "bed4", set: "bed", name: "A Breath in a Jar", line: "It will not be opened." }
+  ];
+
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
     { id: 'keen', cost: 3, name: 'Keen Dark', desc: 'Host Might ×2.' },
@@ -205,7 +252,8 @@ window.TDR_DATA = (function () {
     { id: 'remember', cost: 120, name: 'Rites Remembered', desc: 'Keep half of every Rite level through an Unlighting.' },
     { id: 'hunger', cost: 200, name: 'Lantern-Hunger', desc: 'Stray Lanterns yield three times as much and their boons last twice as long.' },
     { id: 'queen', cost: 600, name: 'The Queen\'s Reflection', desc: 'All Gloom, Might and Echoes ×5.' },
-    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' }
+    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' },
+    { id: 'twolines', cost: 40, name: 'A Second Line', desc: 'Two Soundings can be out at once.' }
   ];
 
   var BOSSES = {
@@ -389,10 +437,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

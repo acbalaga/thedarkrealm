@@ -101,11 +101,13 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        snd: { lines: [], done: 0, dry: { shallows: 0, shelf: 0, trench: 0 } },   // Soundings: lines out (seconds left), draws made, draws since a new relic per depth
+        relics: {},
         pet: { day: 0, count: 0, playedAt: 0, active: '' },   // petitions: last granted local day, the Vigil (days granted), play time at the grant, the one in effect
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
-        unlocked: { shafts: false, rites: false, unlight: false },
+        unlocked: { shafts: false, rites: false, unlight: false, soundings: false },
         ended: false,
         seen: wallNow(),      // latest wall-clock time this realm has observed
         debt: 0,              // seconds of away time forfeited after the clock ran backwards
@@ -178,6 +180,15 @@
         s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
       });
       s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
+      // Soundings: known depths only, as many lines as the perk allows, time left clamped to the depth's length.
+      var maxLines = s.perks.twolines ? 2 : 1;
+      if (o.snd && Array.isArray(o.snd.lines)) o.snd.lines.slice(0, maxLines).forEach(function (l) {
+        var d = l && typeof l === 'object' ? sdepth(l.id) : null;
+        if (d) s.snd.lines.push({ id: d.id, left: num(l, 'left', 0, d.hours * 3600, 0) });
+      });
+      s.snd.done = int(o.snd, 'done', 0, BIG, 0);
+      D.SOUNDINGS.depths.forEach(function (d) { s.snd.dry[d.id] = int(o.snd && o.snd.dry, d.id, 0, 1e4, 0); });
+      D.RELICS.forEach(function (r) { if (flag(o.relics, r.id)) s.relics[r.id] = 1; });
       s.pet.day = int(o.pet, 'day', 0, dayIndex(now) + 1, 0);
       s.pet.count = int(o.pet, 'count', 0, 1e5, 0);
       s.pet.playedAt = num(o.pet, 'playedAt', 0, num(o, 'played', 0, BIG, 0), 0);
@@ -197,7 +208,7 @@
       s.buffs.hush = num(o.buffs, 'hush', 0, 200, 0);
       s.buffs.teeth = num(o.buffs, 'teeth', 0, 200, 0);
       s.lanternIn = num(o, 'lanternIn', 0, 150, 75);
-      ['shafts', 'rites', 'unlight'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
+      ['shafts', 'rites', 'unlight', 'soundings'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
       s.ended = own(o, 'ended') && o.ended === true && s.bestShaft >= FINAL_SHAFT;
       s.seen = num(o, 'seen', 0, BIG, num(o, 'last', 0, now, now));   // `last` is the v1 field
       s.debt = num(o, 'debt', 0, 86400, 0);
@@ -316,6 +327,13 @@
       if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
       var maxLanterns = Math.floor(s.played / 20 + 5);
       if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+      // A Sounding takes real time, so draws cannot outnumber the hours played; every relic came from a draw; the Trench needs a fathom let go.
+      if (s.snd.done > s.played / 3600 + 2) { s.snd.done = Math.floor(s.played / 3600 + 2); fixes++; }
+      var held = D.RELICS.filter(function (r) { return s.relics[r.id]; }), cut = false;
+      for (i = held.length - 1; i >= 0; i--) {
+        if (held.length > s.snd.done || ((held[i].set === 'queen' || held[i].set === 'bed') && s.unlightings < 1)) { delete s.relics[held[i].id]; held.splice(i, 1); cut = true; }
+      }
+      if (cut) fixes++;
       // One grant a day and one per six hours of counted play, so the Vigil cannot outrun the time spent.
       if (s.pet.count > s.played / D.PETITIONS.playedGap + 1) { s.pet.count = Math.floor(s.played / D.PETITIONS.playedGap + 1); fixes++; }
       // Streaks, Processions and Warden's Lamps are counted out of lanterns snuffed.
@@ -645,6 +663,11 @@
         cond: function () { return S.pet.count >= m; }, prog: function () { return S.pet.count / m; } });
     });
 
+    D.RELIC_SETS.forEach(function (rs) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The Shelves', name: rs.name, desc: 'Find all four relics of ' + rs.name + '.', mono: false,
+        cond: function () { return !!setDone(rs.id); }, prog: function () { return D.RELICS.filter(function (r) { return r.set === rs.id && S.relics[r.id]; }).length / 4; } });
+    });
+
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
         1e18: 'a quintillion', 1e21: 'a sextillion', 1e24: 'a septillion' };
@@ -836,7 +859,7 @@
        ones add. A denizen's own channel is written 'den.<id>'. ctx is { present, wall }: present is
        false when the realm is being credited for time away, so a bonus can be limited to open play.
        recalc() and audit() read the same folded result, so a cost cannot drift between them. */
-    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife', 'litanyRate'];
+    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife', 'litanyRate', 'lanternYield'];
     var ADD = ['awayPace', 'bossTime', 'autoHands'];
     var SOURCES = [];
     function addSource(name, fn) { SOURCES.push({ name: name, fn: fn }); }
@@ -924,6 +947,19 @@
       for (k in s.sky.eclipses) n++;
       var f = 1 + D.SKY.ECLIPSE.each * Math.min(D.SKY.ECLIPSE.max, n);
       return n ? { gloom: f, might: f, echo: f } : null;
+    });
+    // Relics are permanent: each adds a little to its set's stat, a whole set adds more.
+    addSource('relics', function (s) {
+      var out = {};
+      D.RELIC_SETS.forEach(function (rs) {
+        var n = 0;
+        D.RELICS.forEach(function (r) { if (r.set === rs.id && s.relics[r.id]) n++; });
+        if (!n) return;
+        var full = n === D.RELICS.filter(function (r) { return r.set === rs.id; }).length;
+        if (rs.stat === 'awayPace') out.awayPace = (out.awayPace || 0) + rs.each * n + (full ? rs.bonus : 0);
+        else out[rs.stat] = (out[rs.stat] || 1) * (1 + rs.each * n) * (full ? rs.bonus : 1);
+      });
+      return out;
     });
     addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
     addSource('lanternBuffs', function (s) {
@@ -1172,7 +1208,7 @@
       if (S.unlocked.shafts) opts.push('teeth', 'teeth', 'echo', 'echo');
       var pick = opts[Math.floor(env.random() * opts.length)], res;
       if (pick === 'spill') {
-        var g = Math.max(C.gps * 300, 30 * C.click) * mult;
+        var g = Math.max(C.gps * 300, 30 * C.click) * mult * modsFor(S).lanternYield;
         gain(g);
         say('The lantern gutters. Spilled light curdles into ' + fmt(g) + ' Gloom.');
         res = { kind: 'spill', amount: g, duration: 0 };
@@ -1284,6 +1320,59 @@
     }
     function vigilMilestone() { var k = 0; D.PETITIONS.milestones.forEach(function (m) { if (S.pet.count >= m) k++; }); return k; }
 
+    /* ---------- Soundings and Relics ---------- */
+    function sdepth(id) { var d = D.SOUNDINGS.depths; for (var i = 0; i < d.length; i++) if (d[i].id === id) return d[i]; return null; }
+    function slackLines() { var n = 0; S.snd.lines.forEach(function (l) { if (l.left <= 0) n++; }); return n; }
+    function setRelics(id) { return D.RELICS.filter(function (r) { return r.set === id; }); }
+    function setDone(id) { var all = setRelics(id); return all.length && all.every(function (r) { return S.relics[r.id]; }) ? 1 : 0; }
+    function relicCount() { var n = 0; for (var k in S.relics) n++; return n; }
+    function maxLines() { return perk('twolines') ? 2 : 1; }
+    function depthOpen(d) {
+      return d.unlock === 'always' || (d.unlock === 'tide25' && cnt('tide') >= 25) || (d.unlock === 'unlight' && S.unlightings >= 1);
+    }
+    function lowerCost(d) { return C.gps * d.cost; }
+
+    /* Lowers a line. Returns false when it cannot be done now. */
+    function lowerLine(id, trusted) {
+      var d = sdepth(id);
+      if (trusted !== true || !d || !S.unlocked.soundings || !depthOpen(d) || S.snd.lines.length >= maxLines()) return false;
+      var cost = lowerCost(d);
+      if (S.gloom < cost) return false;
+      S.gloom -= cost;
+      S.snd.lines.push({ id: d.id, left: d.hours * 3600 });
+      say('The line is down. It will take a while.');
+      afterChange();
+      return true;
+    }
+
+    /* Time on the line. It counts in step() and, away, in full: the away cap does not apply. */
+    function lineTime(sec) {
+      S.snd.lines.forEach(function (l) {
+        if (l.left <= 0) return;
+        l.left = Math.max(0, l.left - sec);
+        if (l.left <= 0) { say('The line has gone slack. Something is tied to it.'); emit('slack', { id: l.id }); }
+      });
+    }
+
+    /* Draws a slack line up. The result comes from the saved seed and the count of draws, so reloading cannot reroll it. */
+    function drawUp(index, trusted) {
+      var line = S.snd.lines[index], d = line ? sdepth(line.id) : null;
+      if (trusted !== true || !d || line.left > 0) return false;
+      var r = rng('sounding', S.snd.done), both = d.sets.every(setDone);
+      var set = pick(r, d.sets), chance = Math.min(1, D.SOUNDINGS.chance + D.SOUNDINGS.perDry * S.snd.dry[d.id]);
+      var hit = r() < chance, relic = null, echoes = d.hours * D.SOUNDINGS.sealsPerHour * shaftReward(S.shaftTop) * (both ? 2 : 1);
+      var rel = pick(r, setRelics(set));
+      if (hit && !both) {
+        if (S.relics[rel.id]) { S.snd.dry[d.id]++; say('The same thing came up twice. The Sea gave Echoes for it instead.'); addEchoes(echoes); }
+        else { S.relics[rel.id] = 1; S.snd.dry[d.id] = 0; relic = rel; say(rel.name + '. ' + rel.line); }
+      } else { S.snd.dry[d.id]++; addEchoes(echoes); say('The line comes up wet. ' + fmt(echoes) + ' Echoes were tied to it.'); }
+      S.snd.done++;
+      S.snd.lines.splice(index, 1);
+      if (relic) emit('relic', { name: relic.name, line: relic.line });
+      afterChange();
+      return { relic: relic, echoes: relic ? 0 : echoes };
+    }
+
     /* ---------- litanies ---------- */
     function litanyCooldown(l) { return l.cd * Math.pow(0.95, rl('breathing')); }
 
@@ -1389,6 +1478,7 @@
       fight(dt);
       var lr = C.mods ? C.mods.litanyRate : 1;
       D.LITANIES.forEach(function (l) { var t = S.lit[l.id]; t.on = Math.max(0, t.on - dt); t.cd = Math.max(0, t.cd - dt * lr); });
+      lineTime(dt);
       S.played += dt; S.runTime += dt;
     }
 
@@ -1405,6 +1495,7 @@
       var capH = awayCapHours();
       var t = Math.min(sec, capH * 3600);
       if (sec >= 600) { S.lanternIn = Math.min(S.lanternIn, 8); welcomeLantern = true; }
+      lineTime(sec);                         // a line runs its whole length away, whatever the away cap
       // A Litany does nothing while the realm is away: its effect ends and its cooldown runs the full time.
       D.LITANIES.forEach(function (l) { S.lit[l.id].on = 0; S.lit[l.id].cd = Math.max(0, S.lit[l.id].cd - sec); });
       var eff = awayPace(), kept = { h: S.buffs.hush, t: S.buffs.teeth };
@@ -1478,6 +1569,7 @@
         say('Light. Something above has cut a shaft through the roof of the realm.');
         emit('unlock', { what: 'Sunshafts', go: { dest: 'host', page: 'shaft' } });
       }
+      if (!u.soundings && cnt('tide') >= 1) { u.soundings = true; say('The Tidewells go down further than their ropes.'); emit('unlock', { what: 'Soundings', go: { dest: 'host', page: 'soundings' } }); }
       if (!u.rites && S.echoesTotal >= 1) {
         u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.');
         emit('unlock', { what: 'Rites', go: { dest: 'host', page: 'rite' } });
@@ -1513,8 +1605,8 @@
         // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
         skyOpen: skyOn() ? 1 : 0, sky: { moonless: S.sky.seen.moonless, lidless: S.sky.seen.lidless, longestnight: S.sky.seen.longestnight,
           longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
-        petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), litanies: S.litanyUses, soundings: 0,
-        sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
+        petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), slack: slackLines() > 0, litanies: S.litanyUses, soundings: S.snd.done,
+        sets: { table: setDone('table'), survey: setDone('survey'), loft: setDone('loft'), lamp: setDone('lamp'), queen: setDone('queen'), bed: setDone('bed') },
         currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
@@ -1542,6 +1634,7 @@
         var n = availableUpgs().filter(function (u) { return S.gloom >= u.cost; }).length;
         return n ? { id: 'working', text: n + (n === 1 ? ' working can be completed.' : ' workings can be completed.'), go: { dest: 'realm', page: 'work' } } : null;
       },
+      function () { return slackLines() ? { id: 'slack', text: 'The line is slack.', go: { dest: 'host', page: 'soundings' } } : null; },
       function () { return petitionOffer() ? { id: 'offer', text: 'The denizens have intentions.', go: { dest: 'seat', page: 'seat' } } : null; },
       function () { return facts().unlight ? { id: 'unlight', text: 'The realm is heavy enough to let go.', go: { dest: 'deep', page: 'unl' } } : null; }
     ];
@@ -1557,7 +1650,7 @@
 
     /* The facts the Seat's objective strip chooses from. Pure reads of the state. */
     function facts() {
-      var f = { denizens: totalDenizens(), offer: !!petitionOffer(), work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
+      var f = { denizens: totalDenizens(), offer: !!petitionOffer(), slack: slackLines() > 0, work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
       var ups = availableUpgs();
       for (i = 0; i < ups.length; i++) if (S.gloom >= ups[i].cost) { f.work = ups[i].name; break; }
       if (S.unlocked.shafts && S.shaftTop % 10 === 0) {
@@ -1619,7 +1712,7 @@
     }
 
     /* The factors that make up a channel right now, by source, for the "Why" popover. */
-    var SOURCE_LABELS = { vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    var SOURCE_LABELS = { relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
     function breakdown(channel) {
       var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
       SOURCES.forEach(function (src) {
@@ -1652,6 +1745,7 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
+      lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
       petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,
       phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,
       skyEffects: skyEffects, nextEvents: nextEvents, almanac: almanac, eclipseCount: eclipseCount,

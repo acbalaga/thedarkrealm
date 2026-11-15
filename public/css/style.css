@@ -507,3 +507,12 @@ body.still .scene-box::before { transition: none; }
 .btn.petition { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; font-weight: 400; }
 .pet-text { font: var(--t-sm) var(--serif); color: var(--text); }
 .pet-effect { font: 600 var(--t-xs) var(--sans); color: var(--gloom); }
+
+/* soundings and the shelves */
+.lines, .shelves { display: flex; flex-direction: column; gap: var(--s-3); }
+.line-slot, .shelf { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-row); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.line-slot h4, .shelf h4 { margin: 0; font: 600 var(--t-md) var(--serif); color: var(--ink); }
+.btn.sounding { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; font-weight: 400; }
+.relic { font: var(--t-sm) var(--serif); color: var(--dim); border: 1px dashed var(--line); border-radius: var(--r-ctl); padding: var(--s-2); }
+.relic.found { color: var(--text); border-style: solid; border-color: var(--echo); }
+@media (min-width: 861px) { .shelves { display: grid; grid-template-columns: 1fr 1fr; } }

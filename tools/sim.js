@@ -136,6 +136,17 @@ function grantBest(e, policy) {
   e.grantPetition(pick || offer[0].id, true);
 }
 
+/* Keeps the longest affordable line out at all times, and draws each one up as soon as it is slack. */
+function sounding(e) {
+  if (!e.S.unlocked.soundings) return;
+  for (var i = e.S.snd.lines.length - 1; i >= 0; i--) if (e.S.snd.lines[i].left <= 0) e.drawUp(i, true);
+  ['trench', 'shelf', 'shallows'].forEach(function (id) {
+    if (e.S.snd.lines.length >= e.maxLines()) return;
+    var d = e.D_depths[id];
+    if (e.depthOpen(d) && e.S.gloom >= e.lowerCost(d)) e.lowerLine(id, true);
+  });
+}
+
 function spendGlass(e, sim) {
   for (var iter = 0; iter < 50; iter++) {
     var pick = null;
@@ -183,6 +194,9 @@ function noteMilestones(e, sim) {
     if (!e.perk(p.id)) all = false;
   });
   mark('All perks', all);
+  var sets = 0;
+  sim.D.RELIC_SETS.forEach(function (rs) { var done = e.setDone(rs.id); sets += done; mark('Relic set: ' + rs.name, !!done); });
+  mark('All six relic sets', sets === 6);
 }
 
 /* ---------- run ---------- */
@@ -205,6 +219,7 @@ function simulate(opts) {
     storage: { get: function () { return null; }, set: function () {}, remove: function () {} }
   };
   var e = core.create(core.D, env);
+  e.D_depths = {}; core.D.SOUNDINGS.depths.forEach(function (d) { e.D_depths[d.id] = d; });
   e.load(); e.recalc(); e.start();
   seeding = false;
   e.S.opts.chatter = false;      // chatter draws random numbers; the baseline was built without it
@@ -241,6 +256,7 @@ function simulate(opts) {
         if (e.S.unlocked.rites) spendEchoes(e, sim);
         if (policy.litanies && e.S.unlocked.rites) speakLitanies(e);
         grantBest(e, policy);
+        sounding(e);
         if (maybeUnlight(e, sim)) spendGlass(e, sim);
         else if (e.S.glass > 0) spendGlass(e, sim);
         noteMilestones(e, sim);

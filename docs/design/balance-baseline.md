@@ -11,12 +11,12 @@ Regenerate with `npm run sim -- --days 60 --seed 1`. Same seed, same output.
 | Question | idle | casual | active |
 | --- | --- | --- | --- |
 | First Unlighting that yields Nightglass is possible (present) | never | 15 min | 25 min |
-| First Unlighting under the simulator's rule (present) | never | 8.7 h | 19.0 h |
-| First Unlighting under the rule (elapsed) | never | 9.6 days | 9.8 days |
-| Sunshaft 150 (present) | never | 10.3 h | 20.6 h |
-| Sunshaft 150 (elapsed) | never | 11.4 days | 10.5 days |
-| All perks (present) | never | 10.1 h | 20.1 h |
-| All perks (elapsed) | never | 11.3 days | 10.3 days |
+| First Unlighting under the simulator's rule (present) | never | 10.9 h | 17.0 h |
+| First Unlighting under the rule (elapsed) | never | 11.9 days | 8.8 days |
+| Sunshaft 150 (present) | never | 11.7 h | 18.3 h |
+| Sunshaft 150 (elapsed) | never | 12.8 days | 9.3 days |
+| All perks (present) | never | 11.6 h | 18.0 h |
+| All perks (elapsed) | never | 12.7 days | 9.3 days |
 
 "Possible" is the first moment `glassGain()` is at least 1, which needs 1e9 Gloom in the fathom. The rule row is when the simulator's Unlighting rule fires: Nightglass per hour has fallen to 70 percent of its peak for the fathom, and the yield is at least 1 (and at least 20 percent of lifetime Nightglass after the first).
 
@@ -39,6 +39,9 @@ Regenerate with `npm run sim -- --days 60 --seed 1`. Same seed, same output.
 | TDR-030 | Surface Clock; simulator clock now starts at local midnight (UTC) | 15 min | 8.7 h | 26 min | 22.5 h |
 | TDR-031 | Almanac: moon, solstices, eclipses | 15 min | 8.7 h | 26 min | 21.0 h |
 | TDR-032 | Petitions and the Vigil | 15 min | 8.7 h | 25 min | 19.0 h |
+| TDR-033 | Soundings and Relics | 15 min | 10.9 h | 25 min | 17.0 h |
+
+TDR-033: relic completion with the simulator's policy (it keeps the longest affordable line out and draws it up at every visit). `casual` completes all six sets in 36 days of elapsed time (33 hours present), inside the 30 to 90 day target, so no chances were tuned. `active` completes all six in about 24 days. Each set's time is in the raw output below as `Relic set: ...`. The rule-driven first Unlighting moved by under 25 percent in each policy, within the noise this measure has shown.
 
 TDR-032 changes `casual` and `idle` not at all in the rule-driven first Unlighting (both play less than a day before they have 25 denizens and then meet one petition a day) and `active` by about 10 percent, within the noise. `idle` still never starts: it has no hand gathering, so it never binds a first denizen, so it never reaches 25.
 
@@ -71,64 +74,68 @@ First Rite                                      7.0h       55s      7.0h
 Sunshaft 10                                     7.0h       80s      7.0h
 Sunshaft 50                                    10.0h       11m     10.0h
 Unlighting first possible (yield >= 1)         11.5h       15m     11.5h
-Sunshaft 100                                    5.3d      4.7h      5.1d
-First Unlighting                                9.6d      8.7h      9.3d
-Perk: The First Absence                         9.6d      8.7h      9.3d
-Perk: Keen Dark                                 9.6d      8.7h      9.3d
-Perk: Deep Vein                                 9.6d      8.7h      9.3d
-Perk: Echoing Halls                             9.6d      8.7h      9.3d
-Perk: Unsleeping                                9.6d      8.7h      9.3d
-Perk: Bound Hands                               9.6d      8.7h      9.3d
-Perk: Thrifty Dark                              9.6d      8.7h      9.3d
-Perk: Remembered Road                           9.6d      8.7h      9.3d
-Perk: The Steward                               9.6d      8.7h      9.3d
-Perk: Rites Remembered                          9.6d      8.7h      9.3d
-Perk: Lantern-Hunger                            9.9d      9.0h      9.5d
-Perk: The Queen's Reflection                   10.4d      9.3h     10.1d
-Perk: Further Down                             11.3d     10.1h     10.9d
-All perks                                      11.3d     10.1h     10.9d
-Sunshaft 150                                   11.4d     10.3h     11.1d
+Relic set: The Surveyor's Kit                   3.5d      3.0h      3.4d
+Sunshaft 100                                    3.5d      3.0h      3.4d
+Relic set: The Choir Loft                       7.5d      6.7h      7.2d
+First Unlighting                               11.9d     10.9h     11.5d
+Perk: The First Absence                        11.9d     10.9h     11.5d
+Perk: Keen Dark                                11.9d     10.9h     11.5d
+Perk: Deep Vein                                11.9d     10.9h     11.5d
+Perk: Echoing Halls                            11.9d     10.9h     11.5d
+Perk: Unsleeping                               11.9d     10.9h     11.5d
+Perk: Bound Hands                              11.9d     10.9h     11.5d
+Perk: Thrifty Dark                             11.9d     10.9h     11.5d
+Perk: Remembered Road                          11.9d     10.9h     11.5d
+Perk: The Steward                              11.9d     10.9h     11.5d
+Perk: Rites Remembered                         11.9d     10.9h     11.5d
+Perk: A Second Line                            11.9d     10.9h     11.5d
+Perk: Lantern-Hunger                           12.3d     11.0h     11.9d
+Perk: The Queen's Reflection                   12.5d     11.4h     12.1d
+Perk: Further Down                             12.7d     11.6h     12.3d
+All perks                                      12.7d     11.6h     12.3d
+Sunshaft 150                                   12.8d     11.7h     12.4d
+Relic set: The Drowned Table                   14.4d     12.9h     13.9d
+Relic set: The Lamp Room                       15.5d     14.0h     15.1d
+Relic set: The Sleeper's Bed                   25.3d     22.9h     24.9d
+Relic set: The Queen's Things                  36.3d     33.0h     35.9d
+All six relic sets                             36.3d     33.0h     35.9d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
-1             9.6d      8.7h       386      1.67      109
-2             3.0h       10m       121     40.33      109
-3             3.0h       10m       139     46.33      109
-4            10.5h       10m       412     39.24      109
-5             3.0h       10m       319    106.33      119
-6               4m        4m       277   4638.14      119
-7              86m       85s       354    245.79      119
-8             1.5h        5m       971    647.33      129
-9               5m        5m       601   7591.58      129
-10           17.9h       30m      4156    231.91      139
-11            1.5h        5m      4502   3001.33      139
-12            1.5h        5m      4224   2816.00      149
-13            1.5h        5m      6323   4215.33      159
-14            1.5h        5m      6138   4092.00      159
-15            1.5h        5m      6917   4611.33      159
-16              2m        2m      7388 231276.52      159
-17             88m        3m      9226   6284.50      159
-18            1.5h        5m     11352   7568.00      159
-19            1.5h        5m     12916   8610.67      159
-20            3.0h       10m     15991   5330.33      159
-21           10.5h       10m     20729   1974.19      169
-22            6.0h       20m     24133   4022.17      169
-23            4.5h       15m     28159   6257.56      169
-24           12.0h       15m     33152   2762.67      169
-25           10.5h       35m     40614   3868.00      169
-26           18.0h       35m     48076   2670.89      179
-27           19.5h       42m     58357   2988.83      179
-28           28.5h       69m     69828   2452.26      179
-29           21.0h       45m     84083   4003.95      179
-30            2.3d      2.3h    100446   1808.39      189
-31            2.6d      2.2h    120541   1914.70      189
-32            2.4d      2.4h    144761   2474.55      189
-33            3.8d      3.4h    173177   1892.21      189
-34            6.3d      5.9h    207897   1372.45      189
-35            4.9d      4.5h    249447   2130.58      189
-36            7.6d      6.7h    300296   1655.25      189
-37           10.0d      9.2h    361503   1506.26      199
+1            11.9d     10.9h       452      1.58      109
+2             9.0h        5m       129     14.33      109
+3             1.5h        7m       125     81.97      109
+4             3.0h        9m       307    103.19      119
+5             1.5h        7m       295    193.09      119
+6              88m        3m       694    471.40      129
+7             1.5h        5m       975    650.00      129
+8             1.5h        5m      1095    730.00      129
+9               3m        3m      3061  71094.19      139
+10              2m        2m      2832  72822.86      142
+11            4.4h       10m      8506   1925.28      159
+12              4m        4m      3695  55425.00      159
+13           32.9h       56m     34622   1051.28      169
+14            1.5h        5m     13615   9076.67      169
+15            1.5h        5m     14420   9613.33      169
+16            1.6h        9m     21763  13878.97      169
+17            2.9h        6m     22570   7697.96      169
+18            4.5h       15m     28150   6255.56      169
+19            3.0h       10m     32999  10999.67      169
+20            9.1h        8m     40811   4506.74      175
+21            8.9h       27m     46580   5207.70      179
+22           16.5h       30m     57760   3500.61      179
+23            9.0h       32m     68249   7554.08      179
+24           18.0h       33m     80925   4504.52      179
+25           19.5h       40m    101128   5186.05      179
+26           28.5h       70m    117391   4118.98      189
+27            2.8d      2.5h    142990   2118.37      189
+28           37.5h      1.7h    169752   4526.72      189
+29            3.9d      3.5h    203652   2189.81      189
+30            4.8d      4.3h    244241   2142.46      189
+31            4.8d      4.3h    292926   2536.16      189
+32            5.3d      5.0h    351878   2759.83      199
+33            4.7d      4.2h    422814   3758.35      199
 
-End: 37 Unlightings, Sunshaft 199, 2157912 Nightglass, 2.3d present of 59.9d
+End: 33 Unlightings, Sunshaft 199, 2531402 Nightglass, 2.3d present of 59.9d
 
 Policy active, 60 days, seed 1
 
@@ -138,61 +145,67 @@ First Rite                                      8.0h        2m      8.0h
 Sunshaft 10                                     8.0h        3m      8.0h
 Sunshaft 50                                     8.3h       20m      8.3h
 Unlighting first possible (yield >= 1)          8.4h       25m      8.4h
-Sunshaft 100                                    3.3d      6.1h      3.0d
-First Unlighting                                9.8d     19.0h      8.8d
-Perk: The First Absence                         9.8d     19.0h      8.8d
-Perk: Keen Dark                                 9.8d     19.0h      8.8d
-Perk: Deep Vein                                 9.8d     19.0h      8.8d
-Perk: Echoing Halls                             9.8d     19.0h      8.8d
-Perk: Unsleeping                                9.8d     19.0h      8.8d
-Perk: Bound Hands                               9.8d     19.0h      8.8d
-Perk: Thrifty Dark                              9.8d     19.0h      8.8d
-Perk: Remembered Road                           9.8d     19.0h      8.8d
-Perk: The Steward                               9.8d     19.0h      8.8d
-Perk: Rites Remembered                          9.8d     19.0h      8.8d
-Perk: Lantern-Hunger                            9.9d     19.5h      8.9d
-Perk: The Queen's Reflection                    9.9d     19.8h      9.0d
-Perk: Further Down                             10.3d     20.1h      9.4d
-All perks                                      10.3d     20.1h      9.4d
-Sunshaft 150                                   10.5d     20.6h      9.6d
+Sunshaft 100                                    3.3d      6.0h      3.0d
+Relic set: The Surveyor's Kit                   5.3d     10.0h      4.8d
+Relic set: The Choir Loft                       8.5d     16.5h      7.7d
+First Unlighting                                8.8d     17.0h      7.9d
+Perk: The First Absence                         8.8d     17.0h      7.9d
+Perk: Keen Dark                                 8.8d     17.0h      7.9d
+Perk: Deep Vein                                 8.8d     17.0h      7.9d
+Perk: Echoing Halls                             8.8d     17.0h      7.9d
+Perk: Unsleeping                                8.8d     17.0h      7.9d
+Perk: Bound Hands                               8.8d     17.0h      7.9d
+Perk: Thrifty Dark                              8.8d     17.0h      7.9d
+Perk: Remembered Road                           8.8d     17.0h      7.9d
+Perk: The Steward                               8.8d     17.0h      7.9d
+Perk: Rites Remembered                          8.8d     17.0h      7.9d
+Perk: A Second Line                             8.8d     17.0h      7.9d
+Perk: Lantern-Hunger                            8.8d     17.3h      7.9d
+Perk: The Queen's Reflection                    8.8d     17.5h      7.9d
+Perk: Further Down                              9.3d     18.0h      8.5d
+All perks                                       9.3d     18.0h      8.5d
+Sunshaft 150                                    9.3d     18.3h      8.5d
+Relic set: The Drowned Table                   12.5d     24.5h     11.7d
+Relic set: The Queen's Things                  19.5d     38.5h     18.7d
+Relic set: The Sleeper's Bed                   24.3d      2.0d     23.5d
 
 Fathom    Duration   Present     Glass   Glass/h  Deepest
-1             9.8d     19.0h       435      1.86      109
-2             3.0h       30m       439    146.33      109
-3              21m       21m       300    870.97      119
-4            10.7h        9m      1779    166.96      129
-5               6m        6m      1360  13791.55      129
-6               8m        8m      3981  28379.41      145
-7               2m        2m      1834  50787.69      145
-8               3m        3m      2846  66100.65      145
-9               3m        3m      2844  55342.70      149
-10              7m        7m      3169  28521.00      149
-11            3.5h       70s      5933   1685.78      149
-12              9m        9m      4989  35216.47      156
-13              6m        6m      6010  64585.07      158
-14             11m       11m     10636  58457.40      159
-15              4m        4m      9551 159923.72      159
-16            5.5h       85s     11795   2135.38      159
-17              8m        8m     15392 109725.15      159
-18              8m        8m     16659 126257.68      159
-19              7m        7m     20337 183033.00      159
-20            2.7h       14m     24061   8820.73      169
-21             17m       17m     29070 101113.04      169
-22           14.6h       36m     36962   2531.40      169
-23            6.2h       41m     42484   6880.00      169
-24           13.8h       50m     56633   4096.42      179
-25            4.5h       59m     61906  13790.94      179
-26           19.5h       61m     86048   4410.21      179
-27           28.0h      2.5h     91615   3271.96      179
-28           30.4h      2.9h    110352   3629.17      189
-29           47.9h      3.9h    131992   2757.49      189
-30           27.1h      2.6h    158286   5838.42      189
-31           47.8h      3.8h    190409   3986.23      189
-32            4.0d      7.8h    228557   2384.56      189
-33            5.5d     10.5h    274578   2096.02      189
-34            5.0d     10.0h    330726   2756.05      199
-35            6.4d     13.1h    394923   2563.56      199
-36           10.1d     20.7h    473779   1947.78      199
+1             8.8d     17.0h       427      2.03      109
+2              18m       18m       280    946.48      116
+3              10m       10m       565   3390.00      116
+4               2m        2m       270   8100.00      125
+5            13.5h       30m      3720    275.47      139
+6               4m        4m      2914  49954.29      148
+7               5m        5m      5225  59714.29      148
+8               7m        7m      6497  59213.16      149
+9               5m        5m      4575  54900.00      154
+10              4m        4m      5780  92480.00      156
+11            3.6h        6m     14815   4116.87      159
+12             12m       12m      9842  48205.71      159
+13             17m       17m     11082  40298.18      168
+14            5.5h       75s     15385   2786.72      168
+15              9m        9m     17429 118385.66      169
+16             10m       10m     21586 128445.62      169
+17            2.7h       11m     28456  10599.23      169
+18           11.0h       30m     40494   3681.27      169
+19            4.0h       30m     39183   9795.75      169
+20            6.0h       31m     46781   7782.42      179
+21             22m       22m     55834 154024.83      179
+22           13.6h       38m     66247   4861.67      179
+23           10.2h       73m     79827   7814.47      179
+24           17.9h       87m     95993   5349.46      188
+25           20.2h      1.7h    115368   5703.44      189
+26           27.8h      2.3h    137834   4953.85      189
+27           20.2h      1.7h    165612   8203.13      189
+28           33.6h      2.6h    205803   6125.09      189
+29           27.0h      2.5h    240368   8902.52      189
+30           45.3h      3.8h    288746   6370.37      189
+31            2.1d      4.2h    346713   6842.08      199
+32            3.5d      6.5h    415622   5007.49      199
+33            6.0d     12.4h    498068   3449.12      199
+34            9.5d     19.4h    597789   2611.38      199
+35            5.0d     10.0h    717398   5977.56      199
+36           13.9d     27.5h    860607   2584.36      209
 
-End: 36 Unlightings, Sunshaft 199, 2842670 Nightglass, 5.0d present of 59.9d
+End: 36 Unlightings, Sunshaft 209, 5163135 Nightglass, 5.0d present of 59.9d
 ```

@@ -166,6 +166,8 @@
     else if (ev.type === 'codex') toast({ kind: 'codex', title: 'Codex', text: ev.title, go: { dest: 'ledger', page: 'codex' } });
     else if (ev.type === 'unlock') toast({ kind: 'unlock', title: 'Unlocked', text: ev.what, go: ev.go });
     else if (ev.type === 'boss') toast({ kind: 'unlock', title: 'Lampwarden undone', text: ev.name, go: { dest: 'host', page: 'shaft' } });
+    else if (ev.type === 'slack') toast({ kind: 'sounding', title: 'The line has gone slack', text: 'Something is tied to it.', go: { dest: 'host', page: 'soundings' } });
+    else if (ev.type === 'relic') toast({ kind: 'sounding', title: 'From the Sea', text: ev.name, go: { dest: 'host', page: 'soundings' } });
     else if (ev.type === 'den') toast({ kind: 'unlock', title: 'Bound', text: ev.name, go: { dest: 'realm', page: 'den' } });
   }
 
@@ -350,6 +352,7 @@
       d.pages.forEach(mountPage);
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
+    addPage('host', { id: 'soundings', label: 'Soundings', lock: 'soundings', build: buildSoundings });
     addPage('ledger', { id: 'almanac', label: 'Almanac', lock: 'shafts', build: buildAlmanac });
     $('sky-strip').onclick = function () { goDest('ledger', 'almanac'); };
     rovingKeys(tabs, '.tab', function (n) { n.click(); });
@@ -1095,6 +1098,8 @@
     badge('realm', canWork);
     badge('ledger', engine.codexUnread() > 0 || (!viewing('set') && !!waitingWorker));
     badge('deep', unlReady);
+    badge('host', engine.slackLines() > 0 && !viewing('soundings'));
+    paintLineStatus();
     // The one gold badge: a lantern is passing while the player is somewhere that cannot show it.
 
     setBuff('hush', 'Deep Hush', S.buffs.hush);
@@ -1220,6 +1225,102 @@
     var lan = !!engine.lantern && cur.dest.id !== 'seat';
     barBtns.seat.classList.toggle('has-dot', lan || (!!offer && cur.dest.id !== 'seat'));
     barBtns.seat.classList.toggle('dot-above', lan);
+  }
+
+  /* ---------- Soundings ---------- */
+  function clockTime(ms) { return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function paintLineStatus() {
+    var p = $('line-status'), n = S.snd.lines.length;
+    p.hidden = !S.unlocked.soundings || n === 0;
+    if (p.hidden) return;
+    var slack = engine.slackLines() > 0, soon = Infinity;
+    S.snd.lines.forEach(function (l) { if (l.left > 0 && l.left < soon) soon = l.left; });
+    var tx = slack ? 'The line is slack.' : 'The line is down, ' + fmtTime(soon) + '.';
+    if (p.textContent !== tx) p.textContent = tx;
+  }
+
+  function buildSoundings(page) {
+    page.appendChild(el('p', 'lede', 'The Tidewells go down further than their ropes. Lower a line and come back when it has gone slack. It waits as long as you like.'));
+    page.appendChild(el('h3', 'sub-head', 'Lines'));
+    var linesBox = el('div', 'lines');
+    page.appendChild(linesBox);
+    page.appendChild(el('h3', 'sub-head', 'The Shelves'));
+    var shelves = el('div', 'shelves');
+    page.appendChild(shelves);
+    var shelfParts = D.RELIC_SETS.map(function (rs) {
+      var panel = el('section', 'shelf'), head = el('h4', null, rs.name), bonus = el('p', 'dim small');
+      panel.appendChild(head);
+      var slots = engine.setRelics(rs.id).map(function (r) {
+        var d = el('div', 'relic');
+        panel.appendChild(d);
+        return { r: r, d: d };
+      });
+      panel.appendChild(bonus);
+      shelves.appendChild(panel);
+      return { rs: rs, head: head, slots: slots, bonus: bonus };
+    });
+    var STAT = { echo: 'Echoes', might: 'Might', gloom: 'Gloom', lanternYield: 'Lantern yields', glass: 'Nightglass gained', awayPace: 'Away pace' };
+    function bonusText(rs) {
+      var unit = rs.stat === 'awayPace' ? '+1 point each, +6 points when complete' : '+2% each, \u00d7' + rs.bonus + ' when complete';
+      return STAT[rs.stat] + ': ' + unit;
+    }
+    var sig = '', timeEls = [];
+    return function () {
+      shelfParts.forEach(function (sp) {
+        var n = 0;
+        sp.slots.forEach(function (x) {
+          var got = !!S.relics[x.r.id];
+          if (got) n++;
+          var tx = got ? x.r.name + '. ' + x.r.line : 'Not yet found';
+          if (x.d.textContent !== tx) { x.d.textContent = tx; x.d.classList.toggle('found', got); }
+        });
+        var h = sp.rs.name + ' \u00b7 ' + n + ' of 4';
+        if (sp.head.textContent !== h) sp.head.textContent = h;
+        var b = bonusText(sp.rs);
+        if (sp.bonus.textContent !== b) { sp.bonus.textContent = b; }
+        sp.bonus.classList.toggle('dim', n < 4);
+      });
+      var gps = C.gps;
+      var s2 = S.snd.lines.map(function (l) { return l.id + (l.left <= 0 ? 's' : 'o'); }).join() + ':' + engine.maxLines() + ':' + D.SOUNDINGS.depths.map(function (d) { return (engine.depthOpen(d) ? 1 : 0) + (S.gloom >= engine.lowerCost(d) ? 1 : 0); }).join('');
+      if (s2 !== sig) {
+        sig = s2; timeEls = [];
+        linesBox.replaceChildren();
+        for (var i = 0; i < engine.maxLines(); i++) {
+          var slot = el('div', 'line-slot'), line = S.snd.lines[i];
+          if (line) {
+            var d = D.SOUNDINGS.depths.filter(function (x) { return x.id === line.id; })[0];
+            slot.appendChild(el('h4', null, d.name));
+            if (line.left > 0) {
+              var bar = el('div', 'bar thin'), fill = el('div', 'bar-fill time'), tt = el('span', 'bar-txt');
+              bar.appendChild(fill); bar.appendChild(tt); slot.appendChild(bar);
+              timeEls.push({ line: line, d: d, fill: fill, tt: tt });
+            } else {
+              var up = el('button', 'btn primary', 'Draw up'); up.type = 'button';
+              (function (idx) { up.onclick = function () { engine.drawUp(idx, true); render(); }; })(i);
+              slot.appendChild(up);
+            }
+          } else {
+            slot.appendChild(el('h4', null, 'The line is out of the water'));
+            D.SOUNDINGS.depths.forEach(function (d) {
+              var b = el('button', 'btn sounding'); b.type = 'button';
+              b.appendChild(el('span', 'pet-text', d.name + ' \u00b7 ' + d.hours + ' h \u00b7 ' + fmt(engine.lowerCost(d)) + ' Gloom'));
+              b.appendChild(el('span', 'pet-effect', engine.depthOpen(d) ? 'May bring up ' + d.brings + '.' : (d.unlock === 'tide25' ? 'Needs 25 Tidewells.' : 'Needs a fathom let go.')));
+              b.disabled = !engine.depthOpen(d) || S.gloom < engine.lowerCost(d);
+              b.onclick = function () { engine.lowerLine(d.id, true); render(); };
+              slot.appendChild(b);
+            });
+          }
+          linesBox.appendChild(slot);
+        }
+      }
+      timeEls.forEach(function (x) {
+        var total = x.d.hours * 3600;
+        x.fill.style.width = ((1 - x.line.left / total) * 100).toFixed(1) + '%';
+        var tx = fmtTime(x.line.left) + ' left \u00b7 slack at ' + clockTime(wallNow() + x.line.left * 1000);
+        if (x.tt.textContent !== tx) x.tt.textContent = tx;
+      });
+      if (gps < 0) return;
+    };
   }
 
   /* ---------- the Surface Clock ---------- */
