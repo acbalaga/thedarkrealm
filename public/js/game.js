@@ -892,6 +892,7 @@
       ['Echoes recovered, all fathoms', function () { return fmt(S.echoesTotal); }],
       ['Unlightings', function () { return String(S.unlightings); }],
       ['The Ledger', function () { return S.marks ? S.marks + (S.marks === 1 ? ' irregularity noted' : ' irregularities noted') : 'In order'; }],
+      ['Vigils kept', function () { return String(S.pet.count); }],
       ['The surface', function () { var si = engine.skyInfo(wallNow()); return si.active ? si.name.replace(' above', '') + ', ' + si.effectText : 'Out of sight'; }],
       ['Away pace', function () { return Math.round(engine.awayPace() * 100) + '% for up to ' + engine.awayCapHours() + 'h'; }]
     ].map(function (d) {
@@ -1095,14 +1096,13 @@
     badge('ledger', engine.codexUnread() > 0 || (!viewing('set') && !!waitingWorker));
     badge('deep', unlReady);
     // The one gold badge: a lantern is passing while the player is somewhere that cannot show it.
-    barBtns.seat.classList.toggle('has-dot', !!engine.lantern && cur.dest.id !== 'seat');
-    barBtns.seat.classList.add('dot-above');
 
     setBuff('hush', 'Deep Hush', S.buffs.hush);
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
     paintSky();
+    paintPetition();
     updateLitanies(); litanyChips();
     var rh = $('return-hint');
     if (rh && affordNow) {
@@ -1183,6 +1183,43 @@
         if (n.parentNode !== box) box.appendChild(n);
       } else if (n.parentNode) n.parentNode.removeChild(n);
     });
+  }
+
+  /* ---------- Petitions and the Vigil ----------
+     A card on the Seat while an offer is waiting (it can be left for later), then a chip for the one in effect. */
+  var petSig = '', petChip = el('span', 'buff');
+  function paintPetition() {
+    var offer = engine.petitionOffer(), card = $('petition-card');
+    var sig = offer ? offer.map(function (o) { return o.id; }).join() + ':' + S.pet.count : '';
+    if (sig !== petSig) {
+      petSig = sig;
+      card.replaceChildren();
+      card.hidden = !offer;
+      if (offer) {
+        card.appendChild(el('h3', null, 'The denizens have intentions'));
+        card.appendChild(el('p', 'dim small', 'Vigils kept: ' + S.pet.count + '. Grant one today, or leave them for later. Nothing is lost by waiting.'));
+        offer.forEach(function (p) {
+          var b = el('button', 'btn petition'); b.type = 'button';
+          b.appendChild(el('span', 'pet-text', p.text));
+          b.appendChild(el('span', 'pet-effect', p.effectText));
+          guardRepeat(b);
+          b.addEventListener('click', function (ev) { if (engine.grantPetition(p.id, !!ev && ev.isTrusted === true)) render(); });
+          card.appendChild(b);
+        });
+      }
+    }
+    var act = S.pet.active ? D.PETITIONS.list.filter(function (p) { return p.id === S.pet.active; })[0] : null;
+    var on = act && (act.rest || engine.petitionEffect() !== null || act.now) && (act.rest || engine.dayIndex(wallNow()) <= S.pet.day);
+    var box = $('buffs');
+    if (on) {
+      var tx = act.short + ' \u00b7 ' + (act.rest ? 'until the next grant' : 'until midnight');
+      if (petChip.textContent !== tx) petChip.textContent = tx;
+      if (petChip.parentNode !== box) box.appendChild(petChip);
+    } else if (petChip.parentNode) petChip.parentNode.removeChild(petChip);
+    // The Seat badge: a gold dot means a lantern; an offer waiting is the ordinary gloom dot.
+    var lan = !!engine.lantern && cur.dest.id !== 'seat';
+    barBtns.seat.classList.toggle('has-dot', lan || (!!offer && cur.dest.id !== 'seat'));
+    barBtns.seat.classList.toggle('dot-above', lan);
   }
 
   /* ---------- the Surface Clock ---------- */

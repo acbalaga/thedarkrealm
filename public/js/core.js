@@ -101,6 +101,7 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        pet: { day: 0, count: 0, playedAt: 0, active: '' },   // petitions: last granted local day, the Vigil (days granted), play time at the grant, the one in effect
         clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
@@ -177,6 +178,10 @@
         s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
       });
       s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
+      s.pet.day = int(o.pet, 'day', 0, dayIndex(now) + 1, 0);
+      s.pet.count = int(o.pet, 'count', 0, 1e5, 0);
+      s.pet.playedAt = num(o.pet, 'playedAt', 0, num(o, 'played', 0, BIG, 0), 0);
+      s.pet.active = own(o.pet, 'active') && D.PETITIONS.list.some(function (p) { return p.id === o.pet.active; }) ? o.pet.active : '';
       D.SKY.PHASES.forEach(function (p) { s.sky.phases[p.id] = o.sky && flag(o.sky.phases, p.id) ? 1 : 0; });
       Object.keys(s.sky.seen).forEach(function (k) { s.sky.seen[k] = o.sky && flag(o.sky.seen, k) ? 1 : 0; });
       D.SKY.ECLIPSES.forEach(function (x) { if (o.sky && flag(o.sky.eclipses, x.id)) s.sky.eclipses[x.id] = 1; });
@@ -311,6 +316,8 @@
       if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
       var maxLanterns = Math.floor(s.played / 20 + 5);
       if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+      // One grant a day and one per six hours of counted play, so the Vigil cannot outrun the time spent.
+      if (s.pet.count > s.played / D.PETITIONS.playedGap + 1) { s.pet.count = Math.floor(s.played / D.PETITIONS.playedGap + 1); fixes++; }
       // Streaks, Processions and Warden's Lamps are counted out of lanterns snuffed.
       if (s.bestStreak > s.lanterns) { s.bestStreak = s.lanterns; fixes++; }
       if (s.streak > s.bestStreak) { s.streak = s.bestStreak; fixes++; }
@@ -633,6 +640,11 @@
     OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: 'Sung Through', desc: 'Be on the seat during an eclipse.', mono: false,
       cond: function () { return eclipseCount() >= 1; }, prog: function () { return eclipseCount() ? 1 : 0; } });
 
+    D.PETITIONS.milestones.forEach(function (m, i) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'Vigils kept', name: D.PETITIONS.names[i], desc: 'Keep ' + m + ' Vigils (days on which you granted a petition).', mono: false,
+        cond: function () { return S.pet.count >= m; }, prog: function () { return S.pet.count / m; } });
+    });
+
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
         1e18: 'a quintillion', 1e21: 'a sextillion', 1e24: 'a septillion' };
@@ -747,7 +759,12 @@
       D.SKY.DATED.forEach(function (d) { if (ev.indexOf(d.id) >= 0) add(d.effect); });
       D.SKY.MOON_EVENTS.forEach(function (d) { if (d.id === me) add(d.effect); });
       if (ev.some(function (id) { return id.charAt(0) === 'e'; })) add(D.SKY.ECLIPSE.effect);
-      for (var c in out) if (c !== 'den.choir' && out[c] > D.SKY.CAP) out[c] = D.SKY.CAP;
+      return capFactors(out);
+    }
+    function copyFactors(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+    /* No multiplied channel goes past x3 from temporary factors. A denizen's own channel (Eclipse Choir x10, Wisp-Gleaner x10) is exempt. */
+    function capFactors(out) {
+      for (var c in out) if (c.indexOf('den.') !== 0 && MULT.indexOf(c) >= 0 && out[c] > D.SKY.CAP) out[c] = D.SKY.CAP;
       return out;
     }
 
@@ -819,7 +836,7 @@
        ones add. A denizen's own channel is written 'den.<id>'. ctx is { present, wall }: present is
        false when the realm is being credited for time away, so a bonus can be limited to open play.
        recalc() and audit() read the same folded result, so a cost cannot drift between them. */
-    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife'];
+    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife', 'litanyRate'];
     var ADD = ['awayPace', 'bossTime', 'autoHands'];
     var SOURCES = [];
     function addSource(name, fn) { SOURCES.push({ name: name, fn: fn }); }
@@ -887,9 +904,19 @@
     /* The Surface Clock. Bonuses from the sky apply while the player is present and never to away pay.
        env.sky === false switches them off (the tests do, so no rule depends on the hour they run). */
     function skyOn() { return env.sky !== false && !!S.unlocked.shafts; }
+    /* Temporary factors from the sky and from a Petition share one ceiling (x3 a channel). Present time only. */
     addSource('sky', function (s, ctx) {
-      if (!ctx.present || env.sky === false || !s.unlocked.shafts) return null;
-      return skyEffects(ctx.wall);
+      if (!ctx.present) return null;
+      var extra = petitionEffect(s, ctx.wall);
+      if (env.sky === false || !s.unlocked.shafts) return extra ? capFactors(copyFactors(extra)) : null;
+      return skyEffects(ctx.wall, extra);
+    });
+    /* The Rest petition works while the player is away, so it is not part of the present-only source. */
+    addSource('petitionRest', function (s) { return s.pet.active === 'rest' ? { awayPace: D.PETITIONS.list.filter(function (p) { return p.id === 'rest'; })[0].effect.awayPace } : null; });
+    addSource('vigil', function (s) {
+      var k = 0;
+      D.PETITIONS.milestones.forEach(function (m) { if (s.pet.count >= m) k++; });
+      return k ? { gloom: Math.pow(D.PETITIONS.factor, k) } : null;
     });
     // Eclipses witnessed are permanent: +2% each to Gloom, Might and Echoes, ten at most. They apply to away pay too.
     addSource('eclipses', function (s) {
@@ -924,7 +951,7 @@
 
       var pct = 0;
       for (i = 1; i < D.HAND_UPGS.length; i++) if (S.upg[D.HAND_UPGS[i].id]) pct += 0.02;
-      C.click = M.hand * M.gloom + pct * C.denGps;
+      C.click = M.hand === 0 ? 0 : M.hand * M.gloom + pct * C.denGps;
       C.gps = C.denGps + M.autoHands * C.click;
       C.might = mightBase * M.might;
       C.echoMult = M.echo;
@@ -1213,6 +1240,50 @@
       return amount;
     }
 
+    function rng(label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); }
+
+    /* ---------- petitions and the Vigil ----------
+       Once a day the denizens state three intentions and the Regent grants one. Days are counted, never chained. */
+    function dayIndex(ms) { return Math.floor((ms - new Date(ms).getTimezoneOffset() * -60000) / 86400000); }
+    function petitionDef(id) { var l = D.PETITIONS.list; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+    function qualifies(p) {
+      var n = p.needs;
+      if (n.den && cnt(n.den) < 1) return false;
+      if (n.shafts && !S.unlocked.shafts) return false;
+      if (n.rites && !S.unlocked.rites) return false;
+      if (n.lanterns && S.lanterns < n.lanterns) return false;
+      return true;
+    }
+    /* The three options waiting, or null. Fixed by the saved seed and the count, so a reload or a clock change shows the same three. */
+    function petitionOffer() {
+      if (totalDenizens() < D.PETITIONS.unlockAt) return null;
+      var now = wallNow();
+      if (dayIndex(now) <= S.pet.day) return null;
+      if (S.pet.count > 0 && S.played - S.pet.playedAt < D.PETITIONS.playedGap) return null;
+      var pool = D.PETITIONS.list.filter(qualifies);
+      if (pool.length < 1) return null;
+      return shuffle(rng('petition', S.pet.count), pool).slice(0, 3);
+    }
+    /* The modifier map in effect: today's petition, while its day lasts (the Rest petition is handled apart). */
+    function petitionEffect(s, ms) {
+      var p = s.pet.active && s.pet.active !== 'rest' ? petitionDef(s.pet.active) : null;
+      return p && dayIndex(ms) <= s.pet.day ? p.effect : null;
+    }
+    function grantPetition(id, trusted) {
+      if (trusted !== true) return false;
+      var offer = petitionOffer(), p = null;
+      if (!offer) return false;
+      offer.forEach(function (o) { if (o.id === id) p = o; });
+      if (!p) return false;
+      S.pet.day = dayIndex(wallNow()); S.pet.count++; S.pet.playedAt = S.played; S.pet.active = p.id;
+      if (p.now === 'temper') S.gloom *= 0.9;
+      if (p.now === 'tithe') addEchoes(20 * shaftReward(S.shaftTop));
+      say('Granted. The ' + p.who + ' have gone to see about it.');
+      afterChange();
+      return true;
+    }
+    function vigilMilestone() { var k = 0; D.PETITIONS.milestones.forEach(function (m) { if (S.pet.count >= m) k++; }); return k; }
+
     /* ---------- litanies ---------- */
     function litanyCooldown(l) { return l.cd * Math.pow(0.95, rl('breathing')); }
 
@@ -1316,7 +1387,8 @@
       }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
       fight(dt);
-      D.LITANIES.forEach(function (l) { var t = S.lit[l.id]; t.on = Math.max(0, t.on - dt); t.cd = Math.max(0, t.cd - dt); });
+      var lr = C.mods ? C.mods.litanyRate : 1;
+      D.LITANIES.forEach(function (l) { var t = S.lit[l.id]; t.on = Math.max(0, t.on - dt); t.cd = Math.max(0, t.cd - dt * lr); });
       S.played += dt; S.runTime += dt;
     }
 
@@ -1441,7 +1513,7 @@
         // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
         skyOpen: skyOn() ? 1 : 0, sky: { moonless: S.sky.seen.moonless, lidless: S.sky.seen.lidless, longestnight: S.sky.seen.longestnight,
           longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
-        petitions: 0, vigils: 0, litanies: S.litanyUses, soundings: 0,
+        petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), litanies: S.litanyUses, soundings: 0,
         sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
         currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
       };
@@ -1470,6 +1542,7 @@
         var n = availableUpgs().filter(function (u) { return S.gloom >= u.cost; }).length;
         return n ? { id: 'working', text: n + (n === 1 ? ' working can be completed.' : ' workings can be completed.'), go: { dest: 'realm', page: 'work' } } : null;
       },
+      function () { return petitionOffer() ? { id: 'offer', text: 'The denizens have intentions.', go: { dest: 'seat', page: 'seat' } } : null; },
       function () { return facts().unlight ? { id: 'unlight', text: 'The realm is heavy enough to let go.', go: { dest: 'deep', page: 'unl' } } : null; }
     ];
     function waiting() {
@@ -1484,7 +1557,7 @@
 
     /* The facts the Seat's objective strip chooses from. Pure reads of the state. */
     function facts() {
-      var f = { denizens: totalDenizens(), work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
+      var f = { denizens: totalDenizens(), offer: !!petitionOffer(), work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
       var ups = availableUpgs();
       for (i = 0; i < ups.length; i++) if (S.gloom >= ups[i].cost) { f.work = ups[i].name; break; }
       if (S.unlocked.shafts && S.shaftTop % 10 === 0) {
@@ -1546,7 +1619,7 @@
     }
 
     /* The factors that make up a channel right now, by source, for the "Why" popover. */
-    var SOURCE_LABELS = { sky: 'The sky above', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    var SOURCE_LABELS = { vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
     function breakdown(channel) {
       var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
       SOURCES.forEach(function (src) {
@@ -1579,13 +1652,14 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
+      petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,
       phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,
       skyEffects: skyEffects, nextEvents: nextEvents, almanac: almanac, eclipseCount: eclipseCount,
       addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,
       facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
-      rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },
+      rng: rng,
       pick: pick, shuffle: shuffle, weighted: weighted,
       // internals the tests exercise
       fresh: fresh, adopt: adopt, audit: audit, seal: seal, pack: pack, unpack: unpack

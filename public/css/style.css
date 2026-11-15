@@ -499,3 +499,11 @@ body.still .scene-box::before { transition: none; }
 .moon-shade { position: absolute; inset: 0; border-radius: 50%; background: var(--well); }
 .almanac-list { list-style: none; margin: 0 0 var(--s-3); padding: 0; }
 .almanac-list li { padding: 4px 0; font-variant-numeric: tabular-nums; }
+
+/* petitions */
+.petition-card { background: var(--panel); border: 1px solid var(--gloom-deep); border-radius: var(--r-panel); padding: var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); }
+.petition-card h3 { font-size: var(--t-lg); color: var(--ink); }
+.petition-card p { margin: 0; }
+.btn.petition { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; font-weight: 400; }
+.pet-text { font: var(--t-sm) var(--serif); color: var(--text); }
+.pet-effect { font: 600 var(--t-xs) var(--sans); color: var(--gloom); }

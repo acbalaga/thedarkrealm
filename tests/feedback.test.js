@@ -21,7 +21,7 @@ test('with a denizen bound and nothing else to do the realm is quiet', () => {
 
 function state(mut) {
   const f = engine();
-  f.e.S.den = { gleaner: 20, scribe: 6 };
+  f.e.S.den = { gleaner: 20, scribe: 6 }; f.e.S.pet.day = 1e9;   // no petition offer in these
   f.e.S.runGloom = 1e6; f.e.S.totalGloom = 1e6; f.e.S.played = 1e5;
   mut(f.e.S);
   f.e.recalc();

@@ -78,6 +78,8 @@ window.TDR_DATA = (function () {
   var OBJECTIVES = [
     { id: 'first', when: function (f) { return f.denizens === 0; }, go: { dest: 'realm', page: 'den' },
       text: function () { return 'Gather 10 Gloom and bind a Wisp-Gleaner.'; } },
+    { id: 'offer', when: function (f) { return f.offer; }, go: { dest: 'seat', page: 'seat' },
+      text: function () { return 'The denizens have intentions.'; } },
     { id: 'working', when: function (f) { return !!f.work; }, go: { dest: 'realm', page: 'work' },
       text: function (f) { return 'A working is ready: ' + f.work + '.'; } },
     { id: 'lampwarden', when: function (f) { return !!f.boss; }, go: { dest: 'host', page: 'shaft' },
@@ -165,6 +167,30 @@ window.TDR_DATA = (function () {
     { id: 'breath', glyph: '\u223f', name: 'Litany of the Held Breath', desc: 'A Lampwarden\'s timer does not run for 10 seconds.', on: 10, cd: 480 },
     { id: 'undertow', glyph: '\u2248', name: 'Litany of the Undertow', desc: 'At once, gather 90 seconds of Gloom.', on: 0, cd: 420 }
   ];
+
+  /* Petitions: a denizen's stated intention, granted once a day. `needs` is what the player must have to be offered it.
+     `effect` is a modifier map (channels in docs/design/ECONOMY.md); `now` an instant effect; `rest` lasts until replaced.
+     Text is verbatim from docs/design/LORE_BIBLE.md section 6. Starting values. */
+  var PETITIONS = {
+    unlockAt: 25,                       // total denizens
+    playedGap: 21600,                   // seconds of counted play between grants
+    milestones: [3, 7, 14, 30, 60, 100], factor: 1.045,
+    names: ['Three Days Kept', 'A Week of Evenings', 'A Fortnight', 'A Month Below', 'Two Months Below', 'A Hundred Vigils'],
+    list: [
+      { id: 'rake', who: 'Gleaners', needs: { den: 'gleaner' }, text: 'The Gleaners intend to rake the upper galleries today.', short: 'Raking', effectText: 'Wisp-Gleaner output \u00d710', effect: { 'den.gleaner': 10 } },
+      { id: 'ink', who: 'Scribes', needs: { den: 'scribe' }, text: 'The Scribes intend to re-rule the Ledger. They will need the Stillwell quiet for it.', short: 'Re-ruling', effectText: 'Gathering by hand yields nothing. All Gloom \u00d71.5', effect: { gloom: 1.5, hand: 0 } },
+      { id: 'curtain', who: 'Weavers', needs: { den: 'weaver', shafts: true }, text: 'The Weavers intend to hang the long curtain across the east shaft.', short: 'The curtain', effectText: 'Lampwarden timer +15 s', effect: { bossTime: 15 } },
+      { id: 'watch', who: 'Wardens', needs: { den: 'warden', shafts: true }, text: 'The Wardens intend to stand nearer the frontier today.', short: 'The watch', effectText: 'Host Might \u00d71.5', effect: { might: 1.5 } },
+      { id: 'rehearse', who: 'Cantors', needs: { den: 'cantor' }, text: 'The Cantors intend to rehearse the whole piece, not only the ending.', short: 'Rehearsal', effectText: 'Litanies return twice as fast', effect: { litanyRate: 2 } },
+      { id: 'temper', who: 'Forge-hands', needs: { den: 'forge' }, text: 'The Forge intends to take a tenth of the Stillwell and give it back as an edge.', short: 'Tempering', effectText: 'Lose 10% of your Gloom now. Host Might \u00d72', effect: { might: 2 }, now: 'temper' },
+      { id: 'sluice', who: 'Tidewells', needs: { den: 'tide' }, text: 'The Tidewells intend to open every sluice until midnight.', short: 'Sluices', effectText: 'Tidewell output \u00d75', effect: { 'den.tide': 5 } },
+      { id: 'bait', who: 'Gleaners', needs: { lanterns: 5 }, text: 'The Gleaners intend to leave a light burning by the crack, to see what comes down for it.', short: 'A light by the crack', effectText: 'Lanterns three times as often', effect: { lanternRate: 3 } },
+      { id: 'names', who: 'Cantors', needs: { rites: true }, text: 'The Cantors intend to read the names in the Ledger aloud, all of them.', short: 'The names', effectText: 'Echoes \u00d71.5', effect: { echo: 1.5 } },
+      { id: 'rest', who: 'denizens', needs: {}, text: 'The realm intends to rest. It will work better for it while you are gone.', short: 'Rest', effectText: 'Away pace +25 points, until the next grant', effect: { awayPace: 0.25 }, rest: true },
+      { id: 'tithe', who: 'Scribes', needs: { shafts: true }, text: 'The Scribes intend to sell a page of the Ledger to the Sea. They expect a fair price in Echoes.', short: 'The page sold', effectText: 'Echoes now: 20 seals of the frontier shaft', effect: {}, now: 'tithe' },
+      { id: 'hands', who: 'denizens', needs: {}, text: 'Every denizen intends to gather by hand today, the way you do.', short: 'Many hands', effectText: 'Gathering by hand \u00d75', effect: { hand: 5 } }
+    ]
+  };
 
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
@@ -363,10 +389,10 @@ window.TDR_DATA = (function () {
   ];
   /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
      Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
-  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky'];
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

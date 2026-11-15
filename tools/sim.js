@@ -50,16 +50,17 @@ function every(startH, endH, stepMin, lenSec) {
 var POLICIES = {
   idle: {
     sessions: function () { return every(0, 24, 240, 180); },
-    clickRate: function () { return 0; }, snuff: 0, handValue: function () { return 0; }
+    clickRate: function () { return 0; }, snuff: 0, handValue: function () { return 0; },
+    petitions: ['rest', 'rake', 'sluice', 'hands']
   },
   casual: {
     sessions: function () { return every(7, 23, 90, 300); },
-    clickRate: function (sim) { return sim.present < 600 ? 4 : 0; }, snuff: 0.5,
+    clickRate: function (sim) { return sim.present < 600 ? 4 : 0; }, snuff: 0.5, petitions: ['sluice', 'rake', 'names', 'watch', 'bait', 'rest'],
     handValue: function (sim) { return sim.present < 600 ? 4 : 0; }
   },
   active: {
     sessions: function () { return [[8 * HOUR, 1800], [12 * HOUR, 1800], [18 * HOUR, 1800], [21 * HOUR, 1800]]; },
-    clickRate: function () { return 8 * 0.2; }, snuff: 0.9, litanies: true,
+    clickRate: function () { return 8 * 0.2; }, snuff: 0.9, litanies: true, petitions: ['sluice', 'rake', 'watch', 'names', 'temper', 'bait', 'hands'],
     handValue: function () { return 8 * 0.2 * 7200 / DAY; }
   }
 };
@@ -124,6 +125,15 @@ function speakLitanies(e) {
     if (S.lit.breath.cd === 0) e.speakLitany('breath', true);
   }
   if (S.lit.undertow.cd === 0) e.speakLitany('undertow', true);
+}
+
+/* Once a day: the option highest on the policy's list. */
+function grantBest(e, policy) {
+  var offer = e.petitionOffer();
+  if (!offer) return;
+  var pick = null;
+  (policy.petitions || []).forEach(function (id) { if (!pick && offer.some(function (o) { return o.id === id; })) pick = id; });
+  e.grantPetition(pick || offer[0].id, true);
 }
 
 function spendGlass(e, sim) {
@@ -230,6 +240,7 @@ function simulate(opts) {
         spendGloom(e, policy, sim);
         if (e.S.unlocked.rites) spendEchoes(e, sim);
         if (policy.litanies && e.S.unlocked.rites) speakLitanies(e);
+        grantBest(e, policy);
         if (maybeUnlight(e, sim)) spendGlass(e, sim);
         else if (e.S.glass > 0) spendGlass(e, sim);
         noteMilestones(e, sim);
