@@ -34,6 +34,7 @@ test('denCost of one follows the stated growth, and thrift takes a tenth off', (
   assert.equal(e.denCost(d, 0, 1), Math.ceil(d.cost));
   assert.equal(e.denCost(d, 10, 1), Math.ceil(d.cost * Math.pow(1.15, 10)));
   e.S.perks.thrift = 1;
+  e.recalc();
   assert.equal(e.denCost(d, 0, 1), Math.ceil(d.cost * 0.9));
 });
 
@@ -83,7 +84,7 @@ test('recalc applies Nightglass, omens, rites, perks and buffs', () => {
   e.recalc();
   const common = 1.1;
   const perm = common * 1.02 * Math.pow(1.12, 3) * 2 * 5;
-  close(e.C.permMult, perm, 'permMult');
+  close(e.C.gMult, perm, 'gloom multiplier');
   close(e.C.denGps, 4 * g.rate * perm, 'denGps');
   close(e.C.click, 2 * Math.pow(1.5, 2) * perm, 'click');
   close(e.C.might, (1 + 4) * common * Math.pow(1.2, 2) * 2 * 5, 'might');

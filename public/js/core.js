@@ -17,6 +17,48 @@
   var GLASS_EXP = 0.3;      // Nightglass = (run Gloom / 1e9) ^ this
   var TAB_IDS = ['den', 'work', 'shaft', 'rite', 'unl', 'omen', 'codex', 'set'];
 
+  /* ---------- seeded randomness ----------
+     Use rng(label, counter) for anything a reload could otherwise reroll: daily picks, a fathom's
+     Current, a Petition. It is a pure function of the saved seed, the label and the counter, and it
+     stores nothing. Use env.random for cosmetics and Stray Lantern timing, which should differ per run. */
+  function hash32(str) {
+    var h = 2166136261 >>> 0, i;
+    for (i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    h ^= h >>> 15; h = Math.imul(h, 2246822507) >>> 0;
+    h ^= h >>> 13; h = Math.imul(h, 3266489909) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
+  }
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function pick(r, list) { return list[Math.floor(r() * list.length)]; }
+  function shuffle(r, list) {
+    var a = list.slice(), i, j, t;
+    for (i = a.length - 1; i > 0; i--) { j = Math.floor(r() * (i + 1)); t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  /* pairs: [[item, weight], ...]. Weights of zero or less are never picked. */
+  function weighted(r, pairs) {
+    var total = 0, i, x;
+    for (i = 0; i < pairs.length; i++) if (pairs[i][1] > 0) total += pairs[i][1];
+    if (total <= 0) return undefined;
+    x = r() * total;
+    for (i = 0; i < pairs.length; i++) {
+      if (pairs[i][1] <= 0) continue;
+      if (x < pairs[i][1]) return pairs[i][0];
+      x -= pairs[i][1];
+    }
+    for (i = pairs.length - 1; i >= 0; i--) if (pairs[i][1] > 0) return pairs[i][0];
+  }
+
   /* env: { wallNow, monoNow, random, say, storage: { get, set, remove } } */
   function create(D, env) {
     var wallNow = env.wallNow, monoNow = env.monoNow, say = env.say, store = env.storage;
@@ -27,9 +69,14 @@
 
     /* ---------- state ---------- */
 
-    function fresh() {
+    function newSeed() { return Math.floor(env.random() * 4294967296) >>> 0; }
+
+    /* seed: pass one to skip drawing a random number (adopt does, so loading never consumes env.random). */
+    function fresh(seed) {
       return {
-        v: 2,
+        v: 3,
+        seed: seed === undefined ? newSeed() : seed,   // fixes the daily and per-fathom rolls, see rng()
+        born: wallNow(),      // wall time this realm began. Informational only, nothing may depend on it
         gloom: 0, runGloom: 0, totalGloom: 0,
         echoes: 0, echoesTotal: 0,
         glass: 0, glassTotal: 0, unlightings: 0,
@@ -63,8 +110,10 @@
     /* Builds a state from untrusted data by copying known fields only. Nothing is merged,
        so keys such as __proto__ or constructor in a crafted save are never touched. */
     function adopt(o) {
-      var s = fresh(), now = wallNow();
-      if (!o || typeof o !== 'object') return s;
+      var s = fresh(0), now = wallNow();
+      if (!o || typeof o !== 'object') { s.seed = newSeed(); return s; }
+      s.seed = own(o, 'seed') ? int(o, 'seed', 0, 4294967295, 0) : newSeed();
+      s.born = num(o, 'born', 0, now, now);
       s.totalGloom = num(o, 'totalGloom', 0, BIG, 0);
       s.runGloom = num(o, 'runGloom', 0, BIG, 0);
       s.gloom = num(o, 'gloom', 0, BIG, 0);
@@ -84,7 +133,7 @@
       s.shaftTop = int(o, 'shaftTop', 1, s.bestShaft + 1, 1);
       s.shaft = int(o, 'shaft', 1, s.shaftTop, 1);
       s.shaftHp = num(o, 'shaftHp', 0, shaftMaxHp(s.shaft), 0) || shaftMaxHp(s.shaft);
-      s.bossTime = num(o, 'bossTime', 0, BOSS_TIME, BOSS_TIME);
+      s.bossTime = num(o, 'bossTime', 0, 600, BOSS_TIME);
       s.march = num(o, 'march', 0, MARCH, 0);
       s.autoAdvance = !own(o, 'autoAdvance') || o.autoAdvance !== false;
       s.regroup = own(o, 'regroup') && o.regroup === true;
@@ -158,10 +207,10 @@
 
       // Everything bound and built this fathom was paid for out of this fathom's Gloom.
       function spentGloom() {
-        var disc = s.perks.thrift ? 0.9 : 1, sum = 0;
+        var sum = 0, free = startingDenizens(s);
         D.DENIZENS.forEach(function (d) {
-          var free = s.perks.absence ? (d.id === 'gleaner' ? 15 : d.id === 'scribe' ? 5 : 0) : 0, n = s.den[d.id] || 0;
-          if (n > free) sum += d.cost * disc * (Math.pow(GROWTH, n) - Math.pow(GROWTH, free)) / (GROWTH - 1);
+          var f = free[d.id] || 0, n = s.den[d.id] || 0;
+          if (n > f) sum += denCost(d, f, n - f, s);
         });
         UPGS.forEach(function (u) { if (s.upg[u.id]) sum += u.cost; });
         return sum;
@@ -183,7 +232,7 @@
       // Before the first Unlighting, every Rite level was paid for in Echoes.
       if (s.unlightings === 0) {
         var e = 0;
-        D.RITES.forEach(function (r) { e += r.base * (Math.pow(r.g, s.rites[r.id] || 0) - 1) / (r.g - 1); });
+        D.RITES.forEach(function (r) { for (var l = 0; l < (s.rites[r.id] || 0); l++) e += riteCost(r, l, s); });
         if (e > (s.echoesTotal - s.echoes) * 1.01 + 1) { s.rites = {}; fixes++; }
       }
 
@@ -264,6 +313,7 @@
         try { S = adopt(JSON.parse(legacy)); store.remove(OLD_KEY); } catch (e) { S = fresh(); }
       }
       pruneOmens();
+      recalc();
       return { note: note };
     }
 
@@ -276,6 +326,7 @@
       if (!u.sealed) return { ok: false, error: 'That save has been altered since it was exported. The Scribes refuse it.' };
       S = adopt(u.data);
       pruneOmens();
+      recalc();
       if (!save()) return { ok: false, error: 'This browser refused to store the save.' };
       return { ok: true };
     }
@@ -391,17 +442,24 @@
     function totalRites() { var t = 0; for (var k in S.rites) t += S.rites[k]; return t; }
     function omenCount() { var t = 0; for (var k in S.omens) t++; return t; }
 
-    function costMult() { return perk('thrift') ? 0.9 : 1; }
-    function denCost(d, n, k) {
-      return Math.ceil(d.cost * costMult() * Math.pow(GROWTH, n) * (Math.pow(GROWTH, k) - 1) / (GROWTH - 1));
+    /* Denizens a perk grants at the start of a fathom. The audit uses it to tell what was bought. */
+    function startingDenizens(s) { return s.perks.absence ? { gleaner: 15, scribe: 5 } : {}; }
+
+    /* Cost functions take an optional state so that audit() can price a save it is checking. */
+    function denCost(d, n, k, s) {
+      return Math.ceil(d.cost * modsFor(s || S).cost * Math.pow(GROWTH, n) * (Math.pow(GROWTH, k) - 1) / (GROWTH - 1));
     }
     function maxBuy(d, n) {
-      var base = d.cost * costMult() * Math.pow(GROWTH, n);
+      var base = d.cost * modsFor(S).cost * Math.pow(GROWTH, n);
       var k = Math.floor(Math.log(S.gloom * (GROWTH - 1) / base + 1) / Math.log(GROWTH));
       while (k > 0 && denCost(d, n, k) > S.gloom) k--;
       return Math.max(0, k);
     }
-    function riteCost(r) { return Math.ceil(r.base * Math.pow(r.g, rl(r.id))); }
+    function riteCost(r, level, s) {
+      s = s || S;
+      if (level === undefined) level = s.rites[r.id] || 0;
+      return Math.ceil(r.base * Math.pow(r.g, level) * modsFor(s).riteCost);
+    }
 
     function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n % 10 === 0 ? 6 : 1); }
     function shaftReward(n) {
@@ -411,8 +469,9 @@
       if (n % 10 !== 0) return 'Sunshaft ' + n;
       return D.BOSSES[n] || 'Lampwarden of the ' + n + 'th Chain';
     }
-    function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP)); }
-    function awayPace() { return Math.min(1, 0.5 + 0.1 * rl('sleep')); }
+    function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP) * modsFor(S).glass); }
+    function awayPace() { return Math.min(1, 0.5 + awayMods().awayPace); }
+    function bossMax() { return BOSS_TIME + modsFor(S).bossTime; }
     function awayCapHours() { return perk('unsleeping') ? 24 : 8; }
 
     function availableUpgs() {
@@ -420,27 +479,94 @@
         .sort(function (a, b) { return a.cost - b.cost; });
     }
 
+    /* ---------- modifiers ----------
+       Every bonus is a source: a function of the state that returns { channel: factor }. Channels
+       are listed in docs/design/ECONOMY.md section 2. Multiplicative channels multiply, the additive
+       ones add. A denizen's own channel is written 'den.<id>'. ctx is { present, wall }: present is
+       false when the realm is being credited for time away, so a bonus can be limited to open play.
+       recalc() and audit() read the same folded result, so a cost cannot drift between them. */
+    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife'];
+    var ADD = ['awayPace', 'bossTime', 'autoHands'];
+    var SOURCES = [];
+    function addSource(name, fn) { SOURCES.push({ name: name, fn: fn }); }
+
+    function mods(s, ctx) {
+      var out = { den: {} }, i, k;
+      for (i = 0; i < MULT.length; i++) out[MULT[i]] = 1;
+      for (i = 0; i < ADD.length; i++) out[ADD[i]] = 0;
+      SOURCES.forEach(function (src) {
+        var r = src.fn(s, ctx);
+        if (!r) return;
+        for (k in r) {
+          if (k.indexOf('den.') === 0) out.den[k.slice(4)] = (out.den[k.slice(4)] || 1) * r[k];
+          else if (MULT.indexOf(k) >= 0) out[k] *= r[k];
+          else if (ADD.indexOf(k) >= 0) out[k] += r[k];
+          else throw new Error('Source ' + src.name + ' wrote unknown channel ' + k);
+        }
+      });
+      return out;
+    }
+
+    /* The folded modifiers for a state. For the live realm this is the copy recalc() made. */
+    function modsFor(s) {
+      return (s === S && C.mods) ? C.mods : mods(s, { present: true, wall: wallNow() });
+    }
+    function awayMods() { return mods(S, { present: false, wall: wallNow() }); }
+
+    function lvl(s, id) { return s.rites[id] || 0; }
+    function omensOf(s) { var t = 0; for (var k in s.omens) t++; return t; }
+
+    addSource('nightglass', function (s) {
+      var f = 1 + 0.05 * s.glassTotal;
+      return { gloom: f, might: f };
+    });
+    addSource('omens', function (s) { return { gloom: 1 + 0.01 * omensOf(s) }; });
+    addSource('rites', function (s) {
+      return {
+        gloom: Math.pow(1.12, lvl(s, 'listen')),
+        might: Math.pow(1.2, lvl(s, 'edge')),
+        echo: Math.pow(1.15, lvl(s, 'names')),
+        hand: Math.pow(1.5, lvl(s, 'hands')),
+        lanternRate: 1 / Math.pow(0.9, lvl(s, 'lure')),
+        awayPace: 0.1 * lvl(s, 'sleep')
+      };
+    });
+    addSource('workings', function (s) {
+      var out = { hand: s.upg.hand0 ? 2 : 1, gloom: 1 };
+      D.REALM_UPGS.forEach(function (r) { if (s.upg[r.id]) out.gloom *= 1.5; });
+      D.DENIZENS.forEach(function (d) {
+        var n = 0;
+        for (var j = 0; j < D.UPG_TIERS.length; j++) if (s.upg[d.id + '_' + j]) n++;
+        out['den.' + d.id] = Math.pow(2, n);
+      });
+      return out;
+    });
+    addSource('perks', function (s) {
+      var p = s.perks, out = { gloom: 1, might: 1, echo: 1, cost: p.thrift ? 0.9 : 1, autoHands: p.bound ? 4 : 0 };
+      if (p.deep) out.gloom *= 2;
+      if (p.keen) out.might *= 2;
+      if (p.halls) out.echo *= 2;
+      if (p.queen) { out.gloom *= 5; out.might *= 5; out.echo *= 5; }
+      if (p.further) { out.gloom *= 10; out.might *= 10; }
+      return out;
+    });
+    addSource('lanternBuffs', function (s) {
+      return { gloom: s.buffs.hush > 0 ? 5 : 1, might: s.buffs.teeth > 0 ? 5 : 1 };
+    });
+
     /* ---------- derived values ---------- */
 
-    function recalc() {
-      var i, d, n;
-      C.omens = omenCount();
-      var common = 1 + 0.05 * S.glassTotal;
-      var m = common * (1 + 0.01 * C.omens) * Math.pow(1.12, rl('listen'));
-      D.REALM_UPGS.forEach(function (r) { if (S.upg[r.id]) m *= 1.5; });
-      if (perk('deep')) m *= 2;
-      if (perk('queen')) m *= 5;
-      if (perk('further')) m *= 10;
-      C.permMult = m;
-      C.gMult = m * (S.buffs.hush > 0 ? 5 : 1);
+    function recalc(ctx) {
+      var i, d, M = mods(S, ctx || { present: true, wall: wallNow() });
+      C.mods = M;
+      C.omens = omensOf(S);
+      C.gMult = M.gloom;
 
       C.denOut = {}; C.denEach = {};
       var total = 0, mightBase = 1;
       for (i = 0; i < D.DENIZENS.length; i++) {
         d = D.DENIZENS[i];
-        n = 0;
-        for (var j = 0; j < D.UPG_TIERS.length; j++) if (S.upg[d.id + '_' + j]) n++;
-        C.denEach[d.id] = d.rate * Math.pow(2, n) * C.gMult;
+        C.denEach[d.id] = d.rate * (M.den[d.id] || 1) * M.gloom;
         C.denOut[d.id] = C.denEach[d.id] * cnt(d.id);
         total += C.denOut[d.id];
         mightBase += cnt(d.id) * Math.pow(3, i);
@@ -449,21 +575,10 @@
 
       var pct = 0;
       for (i = 1; i < D.HAND_UPGS.length; i++) if (S.upg[D.HAND_UPGS[i].id]) pct += 0.02;
-      var handBase = (S.upg.hand0 ? 2 : 1) * Math.pow(1.5, rl('hands'));
-      C.click = handBase * C.gMult + pct * C.denGps;
-      C.gps = C.denGps + (perk('bound') ? 4 * C.click : 0);
-
-      var mm = common * Math.pow(1.2, rl('edge'));
-      if (perk('keen')) mm *= 2;
-      if (perk('queen')) mm *= 5;
-      if (perk('further')) mm *= 10;
-      if (S.buffs.teeth > 0) mm *= 5;
-      C.might = mightBase * mm;
-
-      var em = Math.pow(1.15, rl('names'));
-      if (perk('halls')) em *= 2;
-      if (perk('queen')) em *= 5;
-      C.echoMult = em;
+      C.click = M.hand * M.gloom + pct * C.denGps;
+      C.gps = C.denGps + M.autoHands * C.click;
+      C.might = mightBase * M.might;
+      C.echoMult = M.echo;
     }
 
     /* ---------- core actions ---------- */
@@ -526,10 +641,11 @@
       var kept = {};
       if (perk('remember')) for (var k in S.rites) { var h = Math.floor(S.rites[k] / 2); if (h) kept[k] = h; }
       S.rites = kept;
-      if (perk('absence')) { S.den.gleaner = 15; S.den.scribe = 5; }
+      var free = startingDenizens(S);
+      for (var fk in free) S.den[fk] = free[fk];
       S.shaft = perk('quick') ? Math.floor(S.bestShaft / 2) + 1 : 1;
       S.shaftTop = S.shaft;
-      S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = BOSS_TIME; S.march = 0;
+      S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = bossMax(); S.march = 0;
       S.autoAdvance = true; S.regroup = false;
       S.buffs.hush = 0; S.buffs.teeth = 0;
       S.runTime = 0;
@@ -546,7 +662,7 @@
     function placeShaft(n) {
       S.shaft = Math.max(1, Math.min(n, S.shaftTop));
       S.shaftHp = shaftMaxHp(S.shaft);
-      S.bossTime = BOSS_TIME;
+      S.bossTime = bossMax();
       S.march = 0;
     }
 
@@ -571,7 +687,7 @@
       }
       if (S.autoAdvance) S.shaft = n + 1;
       S.shaftHp = shaftMaxHp(S.shaft);
-      S.bossTime = BOSS_TIME;
+      S.bossTime = bossMax();
       S.march = MARCH;
     }
 
@@ -606,9 +722,9 @@
 
     var lantern = null;       // { life } while one is drifting past, otherwise null
 
-    function lanternDelay() { return (70 + env.random() * 80) * Math.pow(0.9, rl('lure')); }
+    function lanternDelay() { return (70 + env.random() * 80) / modsFor(S).lanternRate; }
 
-    function spawnLantern() { lantern = { life: 14 }; }
+    function spawnLantern() { lantern = { life: 14 * modsFor(S).lanternLife }; }
 
     function hideLantern() { lantern = null; S.lanternIn = lanternDelay(); }
 
@@ -685,11 +801,12 @@
       var t = Math.min(sec, capH * 3600);
       var eff = awayPace();
       S.buffs.hush = 0; S.buffs.teeth = 0;
-      recalc();
+      recalc({ present: false, wall: wallNow() });
       var g = C.gps * t * eff, e0 = S.echoesTotal, s0 = S.bestShaft;
       gain(g);
       fight(t * eff);
       S.played += t; S.runTime += t;
+      recalc();
       if (g <= 0 && S.echoesTotal === e0) return null;
       return {
         sec: sec, credited: t, pace: eff, capHours: capH, gloom: g,
@@ -748,7 +865,7 @@
       }
 
       // After a failed Lampwarden the Host returns on its own once it can win.
-      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < BOSS_TIME * 0.8) {
+      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < bossMax() * 0.8) {
         S.regroup = false; S.autoAdvance = true;
         placeShaft(S.shaftTop);
         say('The Host has grown heavier. It climbs again.');
@@ -797,8 +914,12 @@
       // reads
       cnt: cnt, rl: rl, perk: perk, totalDenizens: totalDenizens, totalRites: totalRites,
       denCost: denCost, maxBuy: maxBuy, riteCost: riteCost, shaftMaxHp: shaftMaxHp, shaftReward: shaftReward,
-      shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours,
+      shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours, bossMax: bossMax,
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
+      // modifiers and seeded randomness
+      addSource: addSource, mods: mods,
+      rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },
+      pick: pick, shuffle: shuffle, weighted: weighted,
       // internals the tests exercise
       fresh: fresh, adopt: adopt, audit: audit, seal: seal, pack: pack, unpack: unpack
     };

@@ -40,6 +40,7 @@ Every bonus, old and new, resolves into one of these channels. `recalc()` multip
 | `awayPace` | Added to away pace, capped at 1 | Long Sleep |
 | `bossTime` | Lampwarden seconds | none yet |
 | `den.<id>` | One denizen's output | tier workings |
+| `autoHands` | Hand gathers made for you each second (additive) | Bound Hands |
 
 A source is a function `mods(S, env)` returning `{ channel: factor }`. Sources are registered in a fixed list. Multiplicative channels multiply. `awayPace` and `bossTime` add.
 

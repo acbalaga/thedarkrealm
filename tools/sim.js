@@ -173,15 +173,19 @@ function simulate(opts) {
   var core = loadCore();
   var wall = WALL0, mono = 0;
   var rng = mulberry32(seed), prng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  /* The engine draws one number for the realm's seed while loading. That draw comes from a
+     separate stream so the lantern rolls that follow are the same ones the baseline was built on. */
+  var seedRng = mulberry32((seed ^ 0x85ebca6b) >>> 0), seeding = true;
   var env = {
     wallNow: function () { return wall; },
     monoNow: function () { return mono; },
-    random: rng,
+    random: function () { return seeding ? seedRng() : rng(); },
     say: function () {},
     storage: { get: function () { return null; }, set: function () {}, remove: function () {} }
   };
   var e = core.create(core.D, env);
   e.load(); e.recalc(); e.start();
+  seeding = false;
 
   var sim = {
     D: core.D, t: 0, present: 0, peak: 0, fathomStart: 0, fathomPresent: 0, fathoms: [],

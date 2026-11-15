@@ -33,7 +33,7 @@
   var denCost = engine.denCost, maxBuy = engine.maxBuy, riteCost = engine.riteCost;
   var shaftMaxHp = engine.shaftMaxHp, shaftReward = engine.shaftReward, shaftName = engine.shaftName;
   var glassGain = engine.glassGain, availableUpgs = engine.availableUpgs;
-  var BOSS_TIME = engine.BOSS_TIME, GLASS_EXP = engine.GLASS_EXP;
+  var GLASS_EXP = engine.GLASS_EXP;
 
   /* ---------- small UI helpers ---------- */
 
@@ -245,7 +245,7 @@
   /* Sunshafts */
   function buildShafts(page) {
     page.appendChild(el('p', 'lede', 'The Auric Concord cuts Sunshafts into the realm to burn shadow for lamp-fuel. Your Host climbs each one and seals it. ' +
-      'It fights on its own. Every tenth shaft is held by a Lampwarden, who must be undone in ' + BOSS_TIME + ' seconds.'));
+      'It fights on its own. Every tenth shaft is held by a Lampwarden, who must be undone in ' + engine.bossMax() + ' seconds.'));
     var box = el('div', 'shaft-box');
     var title = el('h3', 'shaft-title');
     var sub = el('div', 'shaft-sub');
@@ -283,7 +283,7 @@
       txt.textContent = 'Radiance ' + fmt(hp) + ' / ' + fmt(max);
       tbar.hidden = !boss;
       if (boss) {
-        tfill.style.width = (S.bossTime / BOSS_TIME * 100).toFixed(1) + '%';
+        tfill.style.width = (S.bossTime / engine.bossMax() * 100).toFixed(1) + '%';
         ttxt.textContent = Math.ceil(S.bossTime) + 's';
       }
       var secs = max / C.might;
@@ -294,7 +294,7 @@
       top.disabled = n >= S.shaftTop && S.autoAdvance;
       cb.checked = S.autoAdvance;
       note.textContent = 'Deepest shaft sealed, ever: ' + S.bestShaft + '.  Seals this fathom and before: ' + fmt(S.sealed) + '.' +
-        (boss && secs > BOSS_TIME ? '  The Host is not yet strong enough for this Lampwarden. Bind more denizens or deepen the Rite of the Sharpened Dark.' : '') +
+        (boss && secs > engine.bossMax() ? '  The Host is not yet strong enough for this Lampwarden. Bind more denizens or deepen the Rite of the Sharpened Dark.' : '') +
         (S.regroup ? '  The Host is regrouping. It will return to the frontier on its own once it can win there.' : '');
     };
   }
