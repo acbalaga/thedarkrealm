@@ -525,3 +525,16 @@ body.still .scene-box::before { transition: none; }
 .vow-card.kept .count { color: var(--glass); }
 .vow-card.active-vow { border-color: var(--gloom); }
 .vow-note { margin: var(--s-2) var(--s-4) 0; }
+
+/* fathoms and the realm card */
+.advisor { margin: 0; font: italic var(--t-sm) var(--serif); color: var(--text); }
+.fchart { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin: var(--s-3) 0; border-bottom: 1px solid var(--line); }
+.fbar { flex: 1; min-width: 4px; background: var(--glass); border-radius: 2px 2px 0 0; position: relative; opacity: .75; }
+.fbar-label { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font: var(--t-xs) var(--sans); color: var(--glass); white-space: nowrap; }
+.ftable { width: 100%; border-collapse: collapse; font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.ftable th { text-align: left; color: var(--dim); font-weight: 600; padding: var(--s-1) var(--s-2); }
+.ftable td { padding: var(--s-1) var(--s-2); border-top: 1px solid var(--line); }
+.realm-card { width: 100%; height: auto; border-radius: var(--r-ctl); border: 1px solid var(--line); }
+.fscroll { overflow-x: auto; }
+.seg.subnav { display: flex; flex-wrap: wrap; max-width: calc(100% - 2 * var(--s-4)); }
+.seg.subnav .seg-btn { flex: 1 1 auto; }

@@ -101,6 +101,7 @@
         sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
         lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
         litanyUses: 0,
+        runBest: 0, peak: { rate: 0, at: 0 }, fathomVow: '',   // deepest shaft sealed this fathom; best Nightglass per hour seen this fathom and when; the vow taken for it
         vow: '', vowGoal: 0, keepings: {},     // the vow taken for this fathom, the Sunshaft that keeps it, and the vows kept
         current: 'still', currentChoices: 0,   // the grain of this fathom, and how many times one was chosen
         fathoms: [],                            // up to 20 records of past fathoms, newest last
@@ -190,10 +191,15 @@
       D.VOWS.forEach(function (v) { if (flag(o.keepings, v.id)) s.keepings[v.id] = 1; });
       s.vow = own(o, 'vow') && s.unlightings >= 3 && D.VOWS.some(function (v) { return v.id === o.vow; }) ? o.vow : '';
       s.vowGoal = s.vow ? int(o, 'vowGoal', 0, 1e5, 0) : 0;
+      s.runBest = int(o, 'runBest', 0, 1e5, 0);
+      s.peak.rate = num(o.peak, 'rate', 0, BIG, 0);
+      s.peak.at = num(o.peak, 'at', 0, BIG, 0);
+      s.fathomVow = own(o, 'fathomVow') && D.VOWS.some(function (v) { return v.id === o.fathomVow; }) ? o.fathomVow : '';
       if (Array.isArray(o.fathoms)) o.fathoms.slice(-20).forEach(function (f) {
         if (!f || typeof f !== 'object') return;
         var cur = D.CURRENTS.some(function (c) { return c.id === f.current; }) ? f.current : 'still';
-        s.fathoms.push({ n: int(f, 'n', 0, 1e6, 0), current: cur, vow: '', sec: num(f, 'sec', 0, BIG, 0), glass: int(f, 'glass', 0, BIG, 0), best: int(f, 'best', 0, 1e5, 0) });
+        var fv = D.VOWS.some(function (v) { return v.id === f.vow; }) ? f.vow : '';
+        s.fathoms.push({ n: int(f, 'n', 0, 1e6, 0), current: cur, vow: fv, kept: !!fv && f.kept === true, sec: num(f, 'sec', 0, BIG, 0), glass: int(f, 'glass', 0, BIG, 0), best: int(f, 'best', 0, 1e5, 0) });
       });
       // Soundings: known depths only, as many lines as the perk allows, time left clamped to the depth's length.
       var maxLines = s.perks.twolines ? 2 : 1;
@@ -345,6 +351,10 @@
       if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
       var maxLanterns = Math.floor(s.played / 20 + 5);
       if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+      // The Nightglass in the history cannot add up to more than was ever earned: the oldest records go first.
+      var gsum = 0;
+      s.fathoms.forEach(function (f) { gsum += f.glass; });
+      while (s.fathoms.length && gsum > s.glassTotal) { gsum -= s.fathoms.shift().glass; fixes++; }
       // A vow is kept by sealing a shaft in the fathom it was taken: three Unlightings to unlock, one to take it.
       var vk = D.VOWS.filter(function (v) { return s.keepings[v.id]; }), vcut = false;
       for (i = vk.length - 1; i >= 0; i--) {
@@ -1126,11 +1136,11 @@
       } else if (S.unlightings >= 1 && chosen === 'still') picked = true;
       writeBackup('unlight', pack());
       if (S.vow) say(D.VOW_LINES.down);                                   // letting go sets any vow down
-      S.fathoms.push({ n: S.unlightings + 1, current: S.current, vow: S.vow, sec: Math.round(S.runTime), glass: g, best: S.bestShaft });
+      S.fathoms.push({ n: S.unlightings + 1, current: S.current, vow: S.fathomVow, kept: !!S.fathomVow && S.vow === '', sec: Math.round(S.runTime), glass: g, best: S.runBest });
       if (S.fathoms.length > 20) S.fathoms.shift();
       S.glass += g; S.glassTotal += g; S.unlightings++;
       S.current = next;
-      S.vow = ''; S.vowGoal = 0;
+      S.vow = ''; S.vowGoal = 0; S.fathomVow = ''; S.runBest = 0; S.peak = { rate: 0, at: 0 };
       if (picked) { S.currentChoices++; say(currentDef(next).line); }
       S.gloom = 0; S.runGloom = 0; S.echoes = 0; S.runEchoes = 0;
       S.den = {}; S.upg = {};
@@ -1143,7 +1153,7 @@
       for (var fk in free) S.den[fk] = free[fk];
       S.shaft = perk('quick') ? Math.floor(S.bestShaft / 2) + 1 : 1;
       S.shaftTop = S.shaft;
-      if (takeVow) { S.vow = takeVow.id; S.vowGoal = Math.max(takeVow.goal, S.shaftTop + 20); say(takeVow.line); }
+      if (takeVow) { S.fathomVow = takeVow.id; S.vow = takeVow.id; S.vowGoal = Math.max(takeVow.goal, S.shaftTop + 20); say(takeVow.line); }
       S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = bossMax(); S.march = 0;
       S.autoAdvance = true; S.regroup = false;
       S.buffs.hush = 0; S.buffs.teeth = 0;
@@ -1177,6 +1187,7 @@
       var n = S.shaft;
       addEchoes(shaftReward(n));
       S.sealed++;
+      if (n > S.runBest) S.runBest = n;
       if (n >= S.shaftTop) {
         S.shaftTop = n + 1;
         if (S.vow && S.shaftTop > S.vowGoal) keepVow();
@@ -1712,6 +1723,7 @@
         if (bought) recalc();
       }
 
+      samplePeak();
       OMENS.forEach(function (o) {
         if (!S.omens[o.id] && o.cond()) { S.omens[o.id] = 1; say('Omen: ' + o.name + '.'); dirty.omens = true; emit('omen', { id: o.id, name: o.name }); }
       });
@@ -1741,6 +1753,38 @@
     function markAllCodexRead() { S.codexNew = {}; }
     /* Pages in live systems only: the ones the player could know about. */
     function codexLive() { return D.CODEX.filter(function (c) { return D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0; }); }
+
+    /* ---------- the Unlighting advisor ---------- */
+    function rateNow() { return S.runTime >= 300 ? glassGain() / (S.runTime / 3600) : 0; }
+    /* Called from slowChecks: remember the best Nightglass per hour this fathom has shown. */
+    function samplePeak() {
+      if (S.runTime < 300 || glassGain() < 1) return;
+      var r = rateNow();
+      if (r > S.peak.rate) { S.peak.rate = r; S.peak.at = S.runTime; }
+    }
+    /* One sentence on whether now is a good time to let go, and which state it is. */
+    function advisor() {
+      var g = glassGain(), out;
+      if (g < 1) return { state: 'not', text: 'The realm is not yet heavy enough.' };
+      var r = rateNow(), p = Math.max(S.peak.rate, r), q = p > 0 ? r / p : 1, text;
+      if (q >= 0.9) out = { state: 'quick', text: 'The realm is still gaining weight quickly.' };
+      else if (q >= 0.6) out = { state: 'slowing', text: 'The gain is slowing. Letting go soon is reasonable.' };
+      else out = { state: 'suggest', text: 'The gain has slowed. The Ledger suggests letting go.' };
+      text = out.text;
+      if (skyOn() && moonEvent(wallNow()) === 'moonless') text += ' No moon tonight. The glass will be thicker.';
+      if (S.vow) text += ' The vow is not yet kept.';
+      out.text = text;
+      return out;
+    }
+    /* Five plain lines about the realm, for the card and for copying. No save data. */
+    function realmSummary() {
+      var n = 0, k; for (k in S.omens) n++;
+      var lines = ['The Dark Realm', 'Regent of Vesperdeep' + (S.ended ? ', who carried the First Lamp down' : ''),
+        'Fathom ' + (S.unlightings + 1) + ', deepest Sunshaft sealed ' + S.bestShaft,
+        fmt(S.glassTotal) + ' Nightglass earned, ' + n + ' omens' + (S.pet.count ? ', ' + S.pet.count + ' Vigils kept' : ''),
+        fmtTime(S.played) + ' on the seat'];
+      return lines;
+    }
 
     /* ---------- the Night Report ---------- */
 
@@ -1864,6 +1908,7 @@
       speakLitany: speakLitany, litanyCooldown: litanyCooldown,
       riteCostN: riteCostN, maxRite: maxRite,
       lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
+      advisor: advisor, rateNow: rateNow, realmSummary: realmSummary,
       vowDef: vowDef, setDownVow: setDownVow,
       currentOffer: currentOffer, currentDef: currentDef,
       petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,

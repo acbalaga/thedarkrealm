@@ -353,6 +353,7 @@
       d.pages.forEach(mountPage);
     });
     $('strip-whisper').onclick = function () { goDest('seat'); };
+    addPage('ledger', { id: 'fathoms', label: 'Fathoms', lock: 'unlight', build: buildFathoms });
     addPage('deep', { id: 'vows', label: 'Vows', lock: 'vows', build: buildVows });
     addPage('host', { id: 'soundings', label: 'Soundings', lock: 'soundings', build: buildSoundings });
     addPage('ledger', { id: 'almanac', label: 'Almanac', lock: 'shafts', build: buildAlmanac });
@@ -678,6 +679,7 @@
     var box = el('div', 'unl-box');
     var gainEl = el('div', 'unl-gain');
     var nextEl = el('div', 'dim small');
+    var thisEl = el('div', 'dim small'), lastEl = el('div', 'dim small'), advEl = el('p', 'advisor');
     var btn = el('button', 'btn primary big', 'Perform the Unlighting'); btn.type = 'button';
     btn.onclick = function () {
       var g = glassGain();
@@ -688,7 +690,7 @@
         h('p', { className: 'dim' }, 'Each Nightglass ever earned gives +5% Gloom and Might, for good.')],
         [{ label: 'Not yet' }, { label: 'Let go', primary: true, cb: function () { engine.unlight(); render(); } }]);
     };
-    box.appendChild(gainEl); box.appendChild(nextEl); box.appendChild(btn);
+    box.appendChild(gainEl); box.appendChild(advEl); box.appendChild(thisEl); box.appendChild(lastEl); box.appendChild(nextEl); box.appendChild(btn);
     page.appendChild(box);
     page.appendChild(el('h3', 'sub-head', 'Settings in Nightglass'));
     var have = el('p', 'dim small');
@@ -711,6 +713,14 @@
       var need = 1e9 * Math.pow(g + 1, 1 / GLASS_EXP);
       nextEl.textContent = 'Gloom gathered this fathom: ' + fmt(S.runGloom) + '.  Next Nightglass at ' + fmt(need) + '.';
       btn.disabled = g < 1;
+      var adv = engine.advisor();
+      if (advEl.textContent !== adv.text) advEl.textContent = adv.text;
+      var rate = engine.rateNow(), ago = S.runTime - S.peak.at;
+      var tt = 'This fathom: ' + fmtTime(S.runTime) + (rate > 0 ? '  \u00b7  ' + fmt(rate) + ' Nightglass per hour (peak ' + fmt(S.peak.rate) + ', ' + fmtTime(ago) + ' ago)' : '') + '.';
+      if (thisEl.textContent !== tt) thisEl.textContent = tt;
+      var lf = S.fathoms[S.fathoms.length - 1];
+      var lt = lf ? 'Last fathom: ' + fmtTime(lf.sec) + (lf.sec > 0 ? '  \u00b7  ' + fmt(lf.glass / (lf.sec / 3600)) + ' per hour' : '') + '.' : '';
+      if (lastEl.textContent !== lt) lastEl.textContent = lt;
       have.textContent = 'You hold ' + fmt(S.glass) + ' Nightglass to spend. ' + fmt(S.glassTotal) + ' earned in all (+' +
         fmt(S.glassTotal * 5) + '% Gloom and Might). Spending does not reduce that bonus.';
       cards.forEach(function (x) {
@@ -952,6 +962,7 @@
     page.appendChild(el('p', 'dim small', 'The game saves to this browser every 15 seconds and when you leave. Nothing is sent anywhere. There is nothing to buy.'));
     var row = el('div', 'btn-row');
     function mk(label, fn, cls) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.onclick = fn; row.appendChild(b); return b; }
+    mk('Realm card', showRealmCard);
     mk('Save now', function () { say(engine.save() ? 'The Scribes have written it down.' : 'This browser refused to store the save.'); });
     mk('Export save', function () {
       var ta = h('textarea', { id: 'io', readOnly: true, rows: 6 });
@@ -1140,7 +1151,7 @@
 
     applyNav();
     var canWork = !viewing('work') && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
-    var unlReady = !viewing('unl') && S.unlightings === 0 && glassGain() >= 1;
+    var unlReady = !viewing('unl') && ((S.unlightings === 0 && glassGain() >= 1) || engine.advisor().state === 'suggest');
     badge('realm', canWork);
     badge('ledger', engine.codexUnread() > 0 || (!viewing('set') && !!waitingWorker));
     badge('deep', unlReady);
@@ -1355,6 +1366,81 @@
       });
       down.hidden = !S.vow;
     };
+  }
+
+  /* ---------- Fathoms: the Ledger of past fathoms ---------- */
+  function buildFathoms(page) {
+    page.appendChild(el('p', 'lede', 'The last twenty fathoms, newest first, with how much glass each pressed per hour.'));
+    var totals = el('p', 'dim small');
+    page.appendChild(totals);
+    var chart = el('div', 'fchart');
+    chart.setAttribute('aria-hidden', 'true');
+    page.appendChild(chart);
+    var table = document.createElement('table');
+    table.className = 'ftable';
+    var head = document.createElement('tr');
+    ['Fathom', 'Time', 'Nightglass', 'Per hour', 'Deepest', 'Current', 'Vow'].forEach(function (t) { var th = document.createElement('th'); th.scope = 'col'; th.textContent = t; head.appendChild(th); });
+    var thead = document.createElement('thead'); thead.appendChild(head);
+    var body = document.createElement('tbody');
+    table.appendChild(thead); table.appendChild(body);
+    var scroll = el('div', 'fscroll'); scroll.tabIndex = 0; scroll.setAttribute('role', 'region'); scroll.setAttribute('aria-label', 'Past fathoms');
+    scroll.appendChild(table);
+    page.appendChild(scroll);
+    var sig = '';
+    return function () {
+      var s2 = S.fathoms.length + ':' + (S.fathoms.length ? S.fathoms[S.fathoms.length - 1].n : 0);
+      if (s2 === sig) return;
+      sig = s2;
+      body.replaceChildren(); chart.replaceChildren();
+      var best = 0, time = 0, rates = S.fathoms.map(function (f) { var r = f.sec > 0 ? f.glass / (f.sec / 3600) : 0; if (r > best) best = r; time += f.sec; return r; });
+      totals.textContent = 'Fathoms: ' + S.fathoms.length + '  \u00b7  time on those: ' + fmtTime(time) + '  \u00b7  best rate: ' + fmt(best) + ' per hour';
+      S.fathoms.forEach(function (f, i) {
+        var bar = el('div', 'fbar');
+        bar.style.height = (best > 0 ? Math.max(2, rates[i] / best * 100) : 2).toFixed(0) + '%';
+        if (rates[i] === best && best > 0) bar.appendChild(el('span', 'fbar-label', fmt(best)));
+        chart.appendChild(bar);
+      });
+      S.fathoms.slice().reverse().forEach(function (f, j) {
+        var i = S.fathoms.length - 1 - j, tr = document.createElement('tr');
+        [f.n, fmtTime(f.sec), fmt(f.glass), fmt(rates[i]), f.best, engine.currentDef(f.current).short, f.vow ? engine.vowDef(f.vow).name + (f.kept ? ' \u2713' : '') : '\u2014'].forEach(function (v) {
+          var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    };
+  }
+
+  /* The realm card: a picture to show someone. Drawn with canvas text and shapes. Nothing is uploaded, and no
+     save data, seed or checksum is on it. */
+  function drawRealmCard(cv, withLogo) {
+    var x = cv.getContext('2d'), lines = engine.realmSummary(), W = 1200, H = 630;
+    var g = x.createRadialGradient(W * 0.3, 0, 40, W * 0.3, 0, 900);
+    g.addColorStop(0, '#17122e'); g.addColorStop(0.6, '#07060d'); g.addColorStop(1, '#07060d');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.strokeStyle = '#2a2447'; x.lineWidth = 2; x.strokeRect(24, 24, W - 48, H - 48);
+    if (withLogo) x.drawImage(withLogo, 72, 72, 120, 120);
+    x.fillStyle = '#efeaff'; x.font = '600 64px Georgia, serif'; x.fillText(lines[0], 224, 150);
+    x.fillStyle = '#a896ff'; x.font = 'italic 32px Georgia, serif'; x.fillText(lines[1], 224, 196);
+    x.fillStyle = '#dcd7ee'; x.font = '600 44px Georgia, serif';
+    [2, 3, 4].forEach(function (i, n) { x.fillText(lines[i], 72, 330 + n * 90); });
+    x.fillStyle = '#8e87ad'; x.font = '24px system-ui, sans-serif'; x.fillText('Keep the dark quiet.', 72, 580);
+  }
+  function showRealmCard() {
+    var cv = document.createElement('canvas'); cv.width = 1200; cv.height = 630; cv.className = 'realm-card';
+    cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', engine.realmSummary().join('. '));
+    var img = new Image();
+    img.onload = function () { drawRealmCard(cv, img); };
+    img.onerror = function () { drawRealmCard(cv, null); };
+    drawRealmCard(cv, null);
+    img.src = 'icon.svg';
+    modal('Realm card', [h('p', null, 'A picture of your realm, made here. Nothing is sent anywhere; send the file yourself.'), cv],
+      [{ label: 'Save image', cb: function () {
+        try { cv.toBlob(function (b) { if (!b) return; var url = URL.createObjectURL(b), a = h('a', { href: url, download: 'dark-realm-card.png', hidden: true }); document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 1000); }); } catch (e) {}
+        return false;
+      } }, { label: 'Copy as text', cb: function () {
+        try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(engine.realmSummary().join('\n')).catch(function () {}); } catch (e) {}
+        return false;
+      } }, { label: 'Done', primary: true }]);
   }
 
   /* ---------- Soundings ---------- */
