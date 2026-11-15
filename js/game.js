@@ -2,8 +2,18 @@
 (function () {
   'use strict';
 
-  var D = TDR_DATA;
-  var KEY = 'thedarkrealm.save.v1';
+  var D = window.TDR_DATA;
+  try { delete window.TDR_DATA; } catch (e) {}   // keep the tables out of console reach
+  var KEY = 'thedarkrealm.save.v2';
+  var OLD_KEY = 'thedarkrealm.save.v1';
+  var SAVE_TAG = 'TDR2';
+  var MAX_SAVE = 200000;    // characters; a real save is a few KB
+  var CLICK_CAP = 14;       // hand gathers accepted per second
+  var BIG = 1e300;
+
+  /* Clocks are captured once so later overrides of Date.now or performance.now change nothing. */
+  var wallNow = Date.now.bind(Date);
+  var monoNow = (window.performance && typeof performance.now === 'function') ? performance.now.bind(performance) : wallNow;
   var GROWTH = 1.15;        // denizen cost growth per owned
   var MARCH = 0.25;         // seconds the Host needs between shafts
   var BOSS_TIME = 45;       // seconds allowed against a Lampwarden
@@ -18,58 +28,241 @@
 
   function fresh() {
     return {
-      v: 1,
+      v: 2,
       gloom: 0, runGloom: 0, totalGloom: 0,
       echoes: 0, echoesTotal: 0,
       glass: 0, glassTotal: 0, unlightings: 0,
       den: {}, upg: {}, rites: {}, perks: {}, omens: {}, codex: {},
       codexUnread: 0,
       shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
-      autoAdvance: true, sealed: 0,
+      autoAdvance: true, regroup: false, sealed: 0,
       clicks: 0, lanterns: 0, played: 0, runTime: 0,
       buffs: { hush: 0, teeth: 0 },
       lanternIn: 75,
       unlocked: { shafts: false, rites: false, unlight: false },
       ended: false,
-      last: Date.now(),
+      seen: wallNow(),      // latest wall-clock time this realm has observed
+      debt: 0,              // seconds of away time forfeited after the clock ran backwards
+      marks: 0,             // times the save failed its seal or its audit
       opts: { sci: false, motion: true, buy: 1 },
       tab: 'den'
     };
   }
 
-  function merge(a, b) {
-    for (var k in b) {
-      if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
-      if (a[k] && typeof a[k] === 'object' && b[k] && typeof b[k] === 'object') merge(a[k], b[k]);
-      else a[k] = b[k];
+  /* ---------- save integrity ---------- */
+
+  function own(o, k) { return o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k); }
+  function num(o, k, lo, hi, def) {
+    var x = own(o, k) ? o[k] : undefined;
+    return (typeof x === 'number' && isFinite(x)) ? Math.min(hi, Math.max(lo, x)) : def;
+  }
+  function int(o, k, lo, hi, def) { return Math.floor(num(o, k, lo, hi, def)); }
+  function flag(o, k) { return own(o, k) && !!o[k]; }
+
+  /* Builds a state from untrusted data by copying known fields only. Nothing is merged,
+     so keys such as __proto__ or constructor in a crafted save are never touched. */
+  function adopt(o) {
+    var s = fresh(), now = wallNow();
+    if (!o || typeof o !== 'object') return s;
+    s.totalGloom = num(o, 'totalGloom', 0, BIG, 0);
+    s.runGloom = num(o, 'runGloom', 0, BIG, 0);
+    s.gloom = num(o, 'gloom', 0, BIG, 0);
+    s.echoesTotal = num(o, 'echoesTotal', 0, BIG, 0);
+    s.echoes = num(o, 'echoes', 0, BIG, 0);
+    s.glassTotal = int(o, 'glassTotal', 0, BIG, 0);
+    s.glass = int(o, 'glass', 0, BIG, 0);
+    s.unlightings = int(o, 'unlightings', 0, 1e6, 0);
+    D.DENIZENS.forEach(function (d) { var n = int(o.den, d.id, 0, 5000, 0); if (n) s.den[d.id] = n; });
+    UPGS.forEach(function (u) { if (flag(o.upg, u.id)) s.upg[u.id] = 1; });
+    D.RITES.forEach(function (r) { var n = int(o.rites, r.id, 0, r.max || 400, 0); if (n) s.rites[r.id] = n; });
+    D.PERKS.forEach(function (p) { if (flag(o.perks, p.id)) s.perks[p.id] = 1; });
+    OMENS.forEach(function (m) { if (flag(o.omens, m.id)) s.omens[m.id] = 1; });
+    D.CODEX.forEach(function (c) { if (flag(o.codex, c.id)) s.codex[c.id] = 1; });
+    s.codexUnread = int(o, 'codexUnread', 0, 99, 0);
+    s.bestShaft = int(o, 'bestShaft', 0, 1e5, 0);
+    s.shaftTop = int(o, 'shaftTop', 1, s.bestShaft + 1, 1);
+    s.shaft = int(o, 'shaft', 1, s.shaftTop, 1);
+    s.shaftHp = num(o, 'shaftHp', 0, shaftMaxHp(s.shaft), 0) || shaftMaxHp(s.shaft);
+    s.bossTime = num(o, 'bossTime', 0, BOSS_TIME, BOSS_TIME);
+    s.march = num(o, 'march', 0, MARCH, 0);
+    s.autoAdvance = !own(o, 'autoAdvance') || o.autoAdvance !== false;
+    s.regroup = own(o, 'regroup') && o.regroup === true;
+    s.sealed = num(o, 'sealed', 0, BIG, 0);
+    s.played = num(o, 'played', 0, BIG, 0);
+    s.runTime = num(o, 'runTime', 0, s.played, 0);
+    s.clicks = int(o, 'clicks', 0, BIG, 0);
+    s.lanterns = int(o, 'lanterns', 0, BIG, 0);
+    s.buffs.hush = num(o.buffs, 'hush', 0, 80, 0);
+    s.buffs.teeth = num(o.buffs, 'teeth', 0, 80, 0);
+    s.lanternIn = num(o, 'lanternIn', 0, 150, 75);
+    ['shafts', 'rites', 'unlight'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
+    s.ended = own(o, 'ended') && o.ended === true && s.bestShaft >= FINAL_SHAFT;
+    s.seen = num(o, 'seen', 0, BIG, num(o, 'last', 0, now, now));   // `last` is the v1 field
+    s.debt = num(o, 'debt', 0, 86400, 0);
+    s.marks = int(o, 'marks', 0, 1e6, 0);
+    s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
+    s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
+    if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
+    if (own(o, 'tab') && TABS.some(function (t) { return t.id === o.tab; })) s.tab = o.tab;
+    if (audit(s) > 0) s.marks++;
+    return s;
+  }
+
+  /* Checks a state against the game's own bookkeeping and repairs what cannot be true.
+     Returns how many repairs were needed. An honest save needs none. */
+  function audit(s) {
+    var fixes = 0, i, p;
+    function any(o) { for (var k in o) return true; return false; }
+
+    // Nightglass only comes from an Unlighting, and perks only from Nightglass.
+    if (s.unlightings === 0 && (s.glassTotal > 0 || s.glass > 0 || any(s.perks))) { s.glassTotal = 0; s.glass = 0; s.perks = {}; fixes++; }
+    var spentGlass = 0;
+    D.PERKS.forEach(function (q) { if (s.perks[q.id]) spentGlass += q.cost; });
+    if (spentGlass > s.glassTotal) {
+      for (i = D.PERKS.length - 1; i >= 0 && spentGlass > s.glassTotal; i--) {
+        p = D.PERKS[i];
+        if (s.perks[p.id]) { delete s.perks[p.id]; spentGlass -= p.cost; }
+      }
+      fixes++;
+    }
+    if (s.glass > s.glassTotal - spentGlass) { s.glass = s.glassTotal - spentGlass; fixes++; }
+
+    // Lifetime totals against time on the seat. The ceilings sit far above what the fastest
+    // possible play reaches, so they only catch numbers that were typed in.
+    var maxGloom = Math.pow(10, Math.min(300, 7 + s.played / 400));
+    if (s.totalGloom > maxGloom) { s.totalGloom = maxGloom; fixes++; }
+    var maxEchoes = Math.pow(10, Math.min(300, 4 + s.played / 900));
+    if (s.echoesTotal > maxEchoes) { s.echoesTotal = maxEchoes; fixes++; }
+    var maxShaft = Math.floor(30 + s.played / 20);
+    if (s.bestShaft > maxShaft) {
+      s.bestShaft = maxShaft; fixes++;
+      s.shaftTop = Math.min(s.shaftTop, maxShaft + 1);
+      s.shaft = Math.min(s.shaft, s.shaftTop);
+      s.shaftHp = shaftMaxHp(s.shaft);
+      if (s.bestShaft < FINAL_SHAFT) s.ended = false;
+    }
+
+    if (s.runGloom > s.totalGloom) { s.runGloom = s.totalGloom; fixes++; }
+    if (s.gloom > s.runGloom) { s.gloom = s.runGloom; fixes++; }
+    if (s.echoes > s.echoesTotal) { s.echoes = s.echoesTotal; fixes++; }
+
+    // A denizen working needs the denizens it is for.
+    var stripped = false;
+    D.DENIZENS.forEach(function (d) {
+      D.UPG_TIERS.forEach(function (t, j) {
+        if (s.upg[d.id + '_' + j] && (s.den[d.id] || 0) < t.at) { delete s.upg[d.id + '_' + j]; stripped = true; }
+      });
+    });
+    if (stripped) fixes++;
+
+    // Everything bound and built this fathom was paid for out of this fathom's Gloom.
+    function spentGloom() {
+      var disc = s.perks.thrift ? 0.9 : 1, sum = 0;
+      D.DENIZENS.forEach(function (d) {
+        var free = s.perks.absence ? (d.id === 'gleaner' ? 15 : d.id === 'scribe' ? 5 : 0) : 0, n = s.den[d.id] || 0;
+        if (n > free) sum += d.cost * disc * (Math.pow(GROWTH, n) - Math.pow(GROWTH, free)) / (GROWTH - 1);
+      });
+      UPGS.forEach(function (u) { if (s.upg[u.id]) sum += u.cost; });
+      return sum;
+    }
+    function slack(x) { return x * 1.01 + s.runGloom * 1e-9 + 1; }
+    var spent = spentGloom();
+    if (spent > slack(s.runGloom - s.gloom)) {
+      fixes++;
+      for (i = D.DENIZENS.length - 1; i >= 0 && spent > slack(s.runGloom); i--) {
+        var d = D.DENIZENS[i];
+        delete s.den[d.id];
+        for (var j = 0; j < D.UPG_TIERS.length; j++) delete s.upg[d.id + '_' + j];
+        spent = spentGloom();
+      }
+      if (spent > slack(s.runGloom)) { s.upg = {}; spent = spentGloom(); }
+      s.gloom = Math.max(0, Math.min(s.gloom, s.runGloom - spent));
+    }
+
+    // Before the first Unlighting, every Rite level was paid for in Echoes.
+    if (s.unlightings === 0) {
+      var e = 0;
+      D.RITES.forEach(function (r) { e += r.base * (Math.pow(r.g, s.rites[r.id] || 0) - 1) / (r.g - 1); });
+      if (e > (s.echoesTotal - s.echoes) * 1.01 + 1) { s.rites = {}; fixes++; }
+    }
+
+    // Hands and lanterns have physical limits.
+    var maxClicks = Math.floor(s.played * CLICK_CAP + 100);
+    if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
+    var maxLanterns = Math.floor(s.played / 35 + 5);
+    if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+    return fixes;
+  }
+
+  /* Omens tied to lifetime counters can be re-checked. Runs once S is in place. */
+  function pruneOmens() {
+    var cut = false;
+    OMENS.forEach(function (o) { if (o.mono && S.omens[o.id] && !o.cond()) { delete S.omens[o.id]; cut = true; } });
+    if (cut) S.marks++;
+  }
+
+  /* A keyed checksum (cyrb53). It makes hand-editing a save fail its seal. It is not
+     cryptography: the key ships in this file, so the audit above is the real defence. */
+  var SALT = 'vesperdeep/stillwell/ysmerel';
+  function seal(str) {
+    var h1 = 0xdeadbeef ^ 0x51ab, h2 = 0x41c6ce57 ^ 0x51ab, t = SALT + str + SALT;
+    for (var i = 0, ch; i < t.length; i++) {
+      ch = t.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (h2 >>> 0).toString(36) + '-' + (h1 >>> 0).toString(36);
+  }
+
+  function pack() {
+    var body = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+    return SAVE_TAG + '.' + body + '.' + seal(body);
+  }
+
+  /* Returns { data, sealed } or throws if the text is not a save at all. */
+  function unpack(str) {
+    str = String(str).trim();
+    if (str.length > MAX_SAVE) throw new Error('size');
+    var m = /^TDR2\.([A-Za-z0-9+\/=]+)\.([a-z0-9-]+)$/.exec(str);
+    if (!m) throw new Error('format');
+    return { data: JSON.parse(decodeURIComponent(escape(atob(m[1])))), sealed: seal(m[1]) === m[2] };
+  }
+
+  var halted = false, saveWarned = false, loadNote = null;
+
+  function save() {
+    if (halted) return false;
+    try { localStorage.setItem(KEY, pack()); return true; }
+    catch (e) {
+      if (!saveWarned) { saveWarned = true; say('This browser is refusing to store the save. Export it from the Realm tab to keep your progress.'); }
+      return false;
     }
   }
 
-  function sanitize() {
-    ['gloom', 'runGloom', 'totalGloom', 'echoes', 'echoesTotal', 'glass', 'glassTotal', 'shaftHp'].forEach(function (k) {
-      if (typeof S[k] !== 'number' || !isFinite(S[k]) || S[k] < 0) S[k] = 0;
-    });
-    S.shaft = Math.max(1, Math.floor(S.shaft) || 1);
-    S.shaftTop = Math.max(S.shaft, Math.floor(S.shaftTop) || 1);
-    if (S.shaftHp <= 0 || S.shaftHp > shaftMaxHp(S.shaft)) S.shaftHp = shaftMaxHp(S.shaft);
-    if (typeof S.last !== 'number' || S.last > Date.now()) S.last = Date.now();
-  }
-
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); return true; } catch (e) { return false; }
-  }
-
   function load() {
+    var raw = null, legacy = null;
+    try { raw = localStorage.getItem(KEY); if (!raw) legacy = localStorage.getItem(OLD_KEY); } catch (e) {}
     S = fresh();
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) merge(S, JSON.parse(raw));
-    } catch (e) { S = fresh(); }
-    sanitize();
+    if (raw) {
+      try {
+        var u = unpack(raw);
+        if (u.sealed) S = adopt(u.data);
+        else {
+          // Edited outside the game. It is set aside, not played. Nothing is destroyed.
+          try { localStorage.setItem(KEY + '.rejected', raw.slice(0, MAX_SAVE)); } catch (e1) {}
+          loadNote = 'The saved realm was altered outside the game. The Scribes have set it aside, and a new one begins.';
+        }
+      } catch (e) {
+        try { localStorage.setItem(KEY + '.unreadable', raw.slice(0, MAX_SAVE)); } catch (e2) {}
+        loadNote = 'The saved realm could not be read. A new one begins.';
+      }
+    } else if (legacy) {
+      try { S = adopt(JSON.parse(legacy)); localStorage.removeItem(OLD_KEY); } catch (e) { S = fresh(); }
+    }
+    pruneOmens();
   }
-
-  function encodeSave() { return btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }
-  function decodeSave(str) { return JSON.parse(decodeURIComponent(escape(atob(str.trim())))); }
 
   /* ---------- formatting ---------- */
 
@@ -129,14 +322,15 @@
   });
 
   var OMENS = [];
-  function omenSet(list, descFn, condFn) {
+  /* mono: the condition reads a lifetime counter that never falls, so it can be re-verified on load. */
+  function omenSet(list, descFn, condFn, mono) {
     list.forEach(function (p) {
-      OMENS.push({ id: 'o' + OMENS.length, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); } });
+      OMENS.push({ id: 'o' + OMENS.length, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); }, mono: !!mono });
     });
   }
   omenSet([[1e3, 'A Puddle of Night'], [1e6, 'A Cellar of Night'], [1e9, 'A Lake of Night'], [1e12, 'A Sea of Night'],
     [1e15, 'A Sky of Night'], [1e18, 'An Age of Night'], [1e21, 'Night Without Edges'], [1e24, 'Night Without End']],
-    function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; });
+    function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; }, true);
   omenSet([[10, 'A Household'], [100, 'A Court'], [500, 'A City Below'], [1000, 'A Nation Below'], [2000, 'A World Below']],
     function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; });
   omenSet([[1, 'Full Attendance'], [50, 'Standing Room Only']],
@@ -144,17 +338,17 @@
     function (x) { return D.DENIZENS.every(function (d) { return cnt(d.id) >= x; }); });
   omenSet([[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
     [125, 'No Light Left Standing'], [150, 'The Last Shaft']],
-    function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; });
+    function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true);
   omenSet([[100, 'Wet Hands'], [1000, 'Cold Hands'], [10000, 'No Hands Left']],
-    function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; });
+    function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; }, true);
   omenSet([[1, 'Snuffer'], [25, 'Wick-Thief'], [100, 'The Moths\' Revenge']],
-    function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; });
+    function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; }, true);
   omenSet([[1, 'Let Go'], [5, 'Practised Falling'], [10, 'Home Is Down']],
-    function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; });
+    function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; }, true);
   omenSet([[10, 'Observant'], [50, 'Devout']],
     function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; });
   omenSet([[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
-    function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; });
+    function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true);
 
   function fmtPlain(x) {
     var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
@@ -256,7 +450,7 @@
   }
 
   function buyUpg(u, quiet) {
-    if (S.upg[u.id] || S.gloom < u.cost) return false;
+    if (S.upg[u.id] || S.gloom < u.cost || !u.show()) return false;
     S.gloom -= u.cost;
     S.upg[u.id] = 1;
     if (!quiet) afterChange();
@@ -294,7 +488,7 @@
     S.shaft = perk('quick') ? Math.floor(S.bestShaft / 2) + 1 : 1;
     S.shaftTop = S.shaft;
     S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = BOSS_TIME; S.march = 0;
-    S.autoAdvance = true;
+    S.autoAdvance = true; S.regroup = false;
     S.buffs.hush = 0; S.buffs.teeth = 0;
     S.runTime = 0;
     say('The realm lets go. A fathom down, the dark is closer-grained. You carry ' + fmt(g) + ' Nightglass.');
@@ -333,6 +527,7 @@
   function failBoss() {
     say(shaftName(S.shaft) + ' holds the shaft. The Host falls back to regroup.');
     S.autoAdvance = false;
+    S.regroup = true;
     setShaft(S.shaft - 1);
   }
 
@@ -373,8 +568,8 @@
 
   function hideLantern() { $('lantern').hidden = true; lanternLife = 0; S.lanternIn = lanternDelay(); }
 
-  function snuffLantern() {
-    if (lanternLife <= 0) return;
+  function snuffLantern(ev) {
+    if (!ev || ev.isTrusted !== true || lanternLife <= 0) return;
     hideLantern();
     S.lanterns++;
     var big = perk('hunger'), mult = big ? 3 : 1, dur = big ? 80 : 40;
@@ -416,6 +611,11 @@
   }
 
   function away(sec) {
+    if (S.debt > 0) {
+      var pay = Math.min(sec, S.debt);
+      S.debt -= pay; sec -= pay;
+      if (sec < 1) { say('The realm waited for its clocks to agree. Nothing was gathered meanwhile.'); return; }
+    }
     var capH = perk('unsleeping') ? 24 : 8;
     var t = Math.min(sec, capH * 3600);
     var eff = Math.min(1, 0.5 + 0.1 * rl('sleep'));
@@ -435,12 +635,28 @@
     modal('While the realm slept', lines.join(''), [{ label: 'Take the seat', primary: true }]);
   }
 
+  /* Time while the page runs is measured on the monotonic clock, so changing the device clock
+     cannot speed the game up. Wall-clock time only counts for the gap while the page was not
+     running, and that gap goes through away(): capped, and at the away pace. */
+  var monoLast = 0;
+
   function tick() {
-    var now = Date.now(), dt = (now - S.last) / 1000;
-    S.last = now;
-    if (dt < 0) dt = 0;
-    if (dt > 60) away(dt); else step(dt);
-    slowTimer += dt; saveTimer += dt;
+    if (halted) return;
+    var w = wallNow(), m = monoNow();
+    var dm = Math.max(0, (m - monoLast) / 1000);
+    monoLast = m;
+    if (w < S.seen - 120000) {
+      // The device clock went backwards. Forfeit that much future away time, so that
+      // winding the clock forward and back again gains nothing.
+      S.debt = Math.min(86400, S.debt + (S.seen - w) / 1000);
+      S.seen = w;
+      say('The realm\'s clocks disagree. Time away will not count until they settle.');
+    }
+    var gap = Math.max(0, (w - S.seen) / 1000) - dm;
+    if (dm > 90) away(dm); else step(dm);
+    if (gap > 60) away(gap);
+    S.seen = Math.max(S.seen, w);
+    slowTimer += dm; saveTimer += dm;
     if (slowTimer >= 0.5) { slowTimer = 0; slowChecks(); }
     if (saveTimer >= 15) { saveTimer = 0; save(); }
     if (pendingEnding) { pendingEnding = false; showEnding(); }
@@ -457,6 +673,13 @@
     if (!u.rites && S.echoesTotal >= 1) { u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.'); }
     if (!u.unlight && (S.runGloom >= 1e7 || S.unlightings > 0)) {
       u.unlight = true; say('The realm is growing heavy. The oldest page of the Ledger describes what to do about that.');
+    }
+
+    // After a failed Lampwarden the Host returns on its own once it can win.
+    if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < BOSS_TIME * 0.8) {
+      S.regroup = false; S.autoAdvance = true;
+      setShaft(S.shaftTop);
+      say('The Host has grown heavier. It climbs again.');
     }
 
     if (perk('steward')) {
@@ -484,6 +707,7 @@
         if (c.id !== 'waking') say('Codex: ' + c.title + '.');
       }
     });
+    document.title = fmt(S.gloom) + ' Gloom · The Dark Realm';
   }
 
   /* ---------- small UI helpers ---------- */
@@ -719,10 +943,10 @@
     var lab = el('label', 'check');
     var cb = document.createElement('input'); cb.type = 'checkbox';
     lab.appendChild(cb); lab.appendChild(document.createTextNode(' Advance after each seal'));
-    prev.onclick = function () { S.autoAdvance = false; setShaft(S.shaft - 1); render(); };
-    next.onclick = function () { setShaft(S.shaft + 1); render(); };
-    top.onclick = function () { S.autoAdvance = true; setShaft(S.shaftTop); render(); };
-    cb.onchange = function () { S.autoAdvance = cb.checked; render(); };
+    prev.onclick = function () { S.autoAdvance = false; S.regroup = false; setShaft(S.shaft - 1); render(); };
+    next.onclick = function () { S.regroup = false; setShaft(S.shaft + 1); render(); };
+    top.onclick = function () { S.autoAdvance = true; S.regroup = false; setShaft(S.shaftTop); render(); };
+    cb.onchange = function () { S.autoAdvance = cb.checked; S.regroup = false; render(); };
     ctl.appendChild(prev); ctl.appendChild(next); ctl.appendChild(top); ctl.appendChild(lab);
     page.appendChild(ctl);
     var note = el('p', 'dim small');
@@ -749,7 +973,8 @@
       top.disabled = n >= S.shaftTop && S.autoAdvance;
       cb.checked = S.autoAdvance;
       note.textContent = 'Deepest shaft sealed, ever: ' + S.bestShaft + '.  Seals this fathom and before: ' + fmt(S.sealed) + '.' +
-        (boss && secs > BOSS_TIME ? '  The Host is not yet strong enough for this Lampwarden. Bind more denizens or deepen the Rite of the Sharpened Dark.' : '');
+        (boss && secs > BOSS_TIME ? '  The Host is not yet strong enough for this Lampwarden. Bind more denizens or deepen the Rite of the Sharpened Dark.' : '') +
+        (S.regroup ? '  The Host is regrouping. It will return to the frontier on its own once it can win there.' : '');
     };
   }
 
@@ -894,6 +1119,7 @@
       ['Deepest shaft sealed', function () { return String(S.bestShaft); }],
       ['Echoes recovered, all fathoms', function () { return fmt(S.echoesTotal); }],
       ['Unlightings', function () { return String(S.unlightings); }],
+      ['The Ledger', function () { return S.marks ? S.marks + (S.marks === 1 ? ' irregularity noted' : ' irregularities noted') : 'In order'; }],
       ['Away pace', function () { return Math.round(Math.min(1, 0.5 + 0.1 * rl('sleep')) * 100) + '% for up to ' + (perk('unsleeping') ? 24 : 8) + 'h'; }]
     ].map(function (d) {
       stats.appendChild(el('dt', null, d[0]));
@@ -908,26 +1134,35 @@
     mk('Save now', function () { say(save() ? 'The Scribes have written it down.' : 'This browser refused to store the save.'); });
     mk('Export save', function () {
       modal('Export save', '<p>Copy this text and keep it somewhere safe.</p><textarea id="io" readonly rows="6"></textarea>',
-        [{ label: 'Copy', cb: function () { var t = $('io'); t.select(); try { document.execCommand('copy'); } catch (e) {} return false; } },
+        [{ label: 'Copy', cb: function () {
+          var t = $('io'); t.select();
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).catch(function () {});
+            else document.execCommand('copy');
+          } catch (e) {}
+          return false;
+        } },
           { label: 'Done', primary: true }]);
-      $('io').value = encodeSave();
+      $('io').value = pack();
     });
     mk('Import save', function () {
       modal('Import save', '<p>Paste an exported save. It replaces the current realm.</p><textarea id="io" rows="6"></textarea><p id="io-err" class="warn"></p>',
         [{ label: 'Cancel' }, { label: 'Import', primary: true, cb: function () {
-          try {
-            var data = decodeSave($('io').value);
-            if (!data || typeof data !== 'object' || data.v !== 1) throw new Error('bad');
-            S = fresh(); merge(S, data); S.last = Date.now(); sanitize(); save();
-            location.reload();
-          } catch (e) { $('io-err').textContent = 'That text is not a Dark Realm save.'; return false; }
+          var u;
+          try { u = unpack($('io').value); } catch (e) { $('io-err').textContent = 'That text is not a Dark Realm save.'; return false; }
+          if (!u.sealed) { $('io-err').textContent = 'That save has been altered since it was exported. The Scribes refuse it.'; return false; }
+          S = adopt(u.data);
+          pruneOmens();
+          if (!save()) { $('io-err').textContent = 'This browser refused to store the save.'; return false; }
+          wiping = true;
+          location.reload();
         } }]);
     });
     mk('Erase everything', function () {
       modal('Erase the realm?', '<p>This deletes all progress, including Nightglass, omens and the codex. It cannot be undone.</p>',
         [{ label: 'Keep it', primary: true }, { label: 'Erase', danger: true, cb: function () {
           wiping = true;
-          try { localStorage.removeItem(KEY); } catch (e) {}
+          try { localStorage.removeItem(KEY); localStorage.removeItem(OLD_KEY); } catch (e) {}
           location.reload();
         } }]);
     }, 'danger');
@@ -960,7 +1195,6 @@
     $('r-glass').textContent = fmt(S.glass);
     $('r-glassb').textContent = '+' + fmt(S.glassTotal * 5) + '%';
     $('fathom').textContent = 'Vesperdeep  ·  Fathom ' + (S.unlightings + 1);
-    document.title = fmt(S.gloom) + ' Gloom · The Dark Realm';
 
     TABS.forEach(function (t) { tabBtns[t.id].hidden = !!(t.lock && !S.unlocked[t.lock]); });
     var canWork = S.tab !== 'work' && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
@@ -981,7 +1215,19 @@
 
   /* ---------- the Stillwell ---------- */
 
+  /* Only real input events count, and only so many per second. */
+  var clickTimes = [];
+  function clickAllowed(ev) {
+    if (!ev || ev.isTrusted !== true) return false;
+    var t = monoNow();
+    while (clickTimes.length && t - clickTimes[0] > 1000) clickTimes.shift();
+    if (clickTimes.length >= CLICK_CAP) return false;
+    clickTimes.push(t);
+    return true;
+  }
+
   function wellClick(ev) {
+    if (!clickAllowed(ev)) return;
     recalc();
     gain(C.click);
     S.clicks++;
@@ -1049,16 +1295,28 @@
     slowChecks();
     S.codexUnread = isNew ? 1 : S.codexUnread;
     say(isNew ? 'You wake on the floor of a throne room. The seat is empty. The Stillwell is at your feet.' : 'The seat is as you left it.');
+    if (loadNote) say(loadNote);
     showTab(S.tab);
     applyMotion();
+    monoLast = monoNow();
     tick();
     setInterval(tick, 100);
-    window.addEventListener('beforeunload', function () { if (!wiping) save(); });
-    document.addEventListener('visibilitychange', function () { if (document.hidden && !wiping) save(); });
+    function keep() { if (!wiping) save(); }
+    window.addEventListener('beforeunload', keep);
+    window.addEventListener('pagehide', keep);            // the reliable one on phones and Home Screen apps
+    document.addEventListener('visibilitychange', function () { if (document.hidden) keep(); else tick(); });
+    /* A second window on the same save would overwrite this one and double the away credit. */
+    window.addEventListener('storage', function (e) {
+      if (e.key !== KEY || e.newValue === null || halted) return;
+      halted = true;
+      modalQueue.length = 0;
+      modal('The realm is open elsewhere', '<p>Another window or tab has taken the seat and is saving this realm. This one has stopped so the two do not overwrite each other.</p>',
+        [{ label: 'Reload here', primary: true, cb: function () { location.reload(); return false; } }]);
+    });
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(function () {});
     }
-    window.TDR = { state: function () { return S; }, derived: function () { return C; }, save: save, tick: tick };
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

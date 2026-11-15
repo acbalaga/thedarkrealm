@@ -1,6 +1,12 @@
 /* The Dark Realm: static game data and lore. No logic here. */
 'use strict';
-var TDR_DATA = (function () {
+window.TDR_DATA = (function () {
+
+  /* Frozen so the tables cannot be edited from the console. */
+  function freeze(o) {
+    Object.getOwnPropertyNames(o).forEach(function (k) { if (o[k] && typeof o[k] === 'object') freeze(o[k]); });
+    return Object.freeze(o);
+  }
 
   var DENIZENS = [
     { id: 'gleaner', glyph: '✦', name: 'Wisp-Gleaner', plural: 'Wisp-Gleaners', tool: 'Hooks', cost: 10, rate: 0.1,
@@ -153,8 +159,8 @@ var TDR_DATA = (function () {
       text: 'At the top of the last shaft there was no engine and no army. There was one small lamp on a kitchen table, the first the Concord ever lit, still burning shadow-tallow rendered from a shadow whose name the Ledger had kept on its oldest page. Your Host did not snuff it. It carried the flame down, and set it at the foot of the throne, and for the first time the seat cast a shadow of its own.' }
   ];
 
-  return {
+  return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
     RITES: RITES, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
-  };
+  });
 })();

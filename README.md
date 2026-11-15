@@ -8,7 +8,17 @@ You are a shadow that woke without an owner, sitting on an empty throne in Vespe
 
 Open `index.html` in any modern browser. That is the whole install. It runs from `file://` with no server.
 
-If you host the folder over http(s) (GitHub Pages works), a service worker caches it so it can be installed and played offline as an app.
+### Add to Home Screen
+
+Installing as an app needs the folder served over https (a browser rule, not a game rule). GitHub Pages is enough: repo Settings, Pages, deploy from the branch root. Then:
+
+- **iPhone / iPad (Safari):** Share, Add to Home Screen.
+- **Android (Chrome):** menu, Install app (or Add to Home screen).
+- **Desktop Chrome / Edge:** install icon in the address bar.
+
+After the first visit the service worker has every file cached, so the installed app launches and plays with no connection. It opens full screen, respects the notch and home-indicator areas, and saves when it is sent to the background. An installed app keeps its own save, separate from the browser tab, so use Realm > Export save to carry progress across.
+
+Updates load in the background and apply on the next launch. Bump `CACHE` in `sw.js` when shipping changes.
 
 ## How it works
 
@@ -24,6 +34,30 @@ If you host the folder over http(s) (GitHub Pages works), a service worker cache
 
 Saves live in the browser's localStorage. Use Realm > Export save to back up or move a save.
 
+## Fair play
+
+There are no purchases, accounts or leaderboards, and no server. Everything runs on the player's device, which sets a hard limit: anyone willing to edit the source can do what they like. Within that limit the game resists the easy routes.
+
+| Route | What stops it |
+| --- | --- |
+| Console access to game state or tables | State lives in a closure. No globals. Data tables are frozen and removed from `window`. |
+| Editing the save in localStorage or an export | Saves carry a keyed checksum. A save that fails it is refused on import and set aside on load (kept under `thedarkrealm.save.v2.rejected`, never deleted). |
+| Forging a save with a valid checksum | Every load is audited against the game's own bookkeeping: denizens, workings and rites must be affordable from Gloom and Echoes actually earned, Nightglass must come from Unlightings, perks from Nightglass, and lifetime totals must be reachable in the time played. Impossible values are removed and the Realm tab records an irregularity. |
+| Scripted clicking | The Stillwell and Stray Lanterns only accept real input events, at most 14 gathers a second. |
+| Changing the device clock | Running time uses the monotonic clock, so the system clock cannot speed play. Time away is capped (8h, 24h with a perk) and paid at the away pace. Winding the clock back forfeits an equal amount of future away time. |
+| Two tabs on one save | The older tab stops and says so. |
+| Re-enabling a disabled button | Every purchase re-checks cost and unlock conditions in code. |
+
+Known limit: winding the device clock forward and leaving it there still earns one capped away credit per jump. With no server there is no trusted clock to compare against.
+
+## Security
+
+- A Content-Security-Policy allows scripts, styles and images from the game's own folder only. No inline script, no `eval`, no remote hosts, no forms.
+- Imported saves are size-limited, format-checked, and copied field by field against a fixed schema. Nothing is merged, so crafted keys such as `__proto__` are never touched.
+- All dynamic text is written with `textContent`. The few HTML strings are built from fixed text and formatted numbers.
+- The service worker handles same-origin GET requests only and stores only complete, successful, same-origin responses.
+- No network requests, analytics, cookies or third-party code.
+
 ## Files
 
 | File | Purpose |
@@ -32,6 +66,7 @@ Saves live in the browser's localStorage. Use Realm > Export save to back up or 
 | `css/style.css` | All styling |
 | `js/data.js` | Denizens, upgrades, rites, perks, bosses, codex text |
 | `js/game.js` | Game loop, save/load, interface |
-| `sw.js`, `manifest.webmanifest`, `icon.svg` | Optional offline install when hosted |
+| `sw.js`, `manifest.webmanifest` | Offline cache and install metadata when hosted |
+| `icon.svg`, `favicon.ico`, `icons/` | Logo, favicon, Home Screen and maskable icons |
 
 Balance numbers sit at the top of `js/game.js` and in `js/data.js`.
