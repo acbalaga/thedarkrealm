@@ -71,6 +71,28 @@ window.TDR_DATA = (function () {
     { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 }
   ];
 
+  /* What the Seat tells the player to do next. The first entry whose `when` holds wins. `f` is the facts
+     object built by the engine. `go` is where tapping it leads. Add entries in order of importance. */
+  function article(name) { return /^[AEIOU]/.test(name) ? 'An ' : 'A '; }
+  var OBJECTIVES = [
+    { id: 'first', when: function (f) { return f.denizens === 0; }, go: { dest: 'realm', page: 'den' },
+      text: function () { return 'Gather 10 Gloom and bind a Wisp-Gleaner.'; } },
+    { id: 'working', when: function (f) { return !!f.work; }, go: { dest: 'realm', page: 'work' },
+      text: function (f) { return 'A working is ready: ' + f.work + '.'; } },
+    { id: 'lampwarden', when: function (f) { return !!f.boss; }, go: { dest: 'host', page: 'shaft' },
+      text: function (f) { return 'The Host needs ' + (f.boss.mult < 10 ? f.boss.mult.toFixed(1) : Math.ceil(f.boss.mult)) + '\u00d7 more Might for ' + f.boss.name + '.'; } },
+    { id: 'unlight', when: function (f) { return f.unlight; }, go: { dest: 'deep', page: 'unl' },
+      text: function () { return 'The realm is heavy enough to let go.'; } },
+    { id: 'nextden', when: function (f) { return !!f.nextDen; }, go: { dest: 'realm', page: 'den' },
+      text: function (f) { return article(f.nextDen.name) + f.nextDen.name + ' in ' + f.nextDen.when + '.'; } },
+    { id: 'rite', when: function (f) { return f.rite; }, go: { dest: 'host', page: 'rite' },
+      text: function () { return 'The Cantors can perform a rite.'; } },
+    { id: 'omen', when: function (f) { return !!f.omen; }, go: { dest: 'ledger', page: 'omen' },
+      text: function (f) { return f.omen.name + ': ' + Math.floor(f.omen.ratio * 100) + '%.'; } },
+    { id: 'quiet', when: function () { return true; }, go: null,
+      text: function () { return 'The realm is quiet.'; } }
+  ];
+
   /* Stray Lantern paths and their weights. The interface picks one per lantern. */
   var LANTERN_PATHS = [
     { id: 'ltr', w: 35 },
@@ -168,6 +190,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, OBJECTIVES: OBJECTIVES, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

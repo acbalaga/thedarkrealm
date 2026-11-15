@@ -69,7 +69,12 @@
 
     var S;                    // saved state
     var C = {};               // derived values, rebuilt every tick
-    var dirty = { omens: true, codex: true, upgs: false };   // the interface clears these after redrawing
+    var dirty = { omens: true, codex: true, upgs: false };
+    /* Things the interface may want to tell the player about (a toast). The rules only record them. The
+       interface drains the list; it never grows past 60 if nobody is listening. */
+    var events = [];
+    function emit(type, data) { if (events.length < 60) { data = data || {}; data.type = type; events.push(data); } }
+    function drainEvents() { var e = events; events = []; return e; }   // the interface clears these after redrawing
 
     /* ---------- state ---------- */
 
@@ -545,32 +550,34 @@
 
     var OMENS = [];
     /* mono: the condition reads a lifetime counter that never falls, so it can be re-verified on load. */
-    function omenSet(list, descFn, condFn, mono) {
+    /* set: the heading the Omens page groups them under. prog(x): how far along, 0 to 1, for a countable omen. */
+    function omenSet(set, list, descFn, condFn, mono, prog) {
       list.forEach(function (p) {
-        OMENS.push({ id: 'o' + OMENS.length, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); }, mono: !!mono });
+        OMENS.push({ id: 'o' + OMENS.length, set: set, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); }, mono: !!mono,
+          prog: function () { return Math.min(1, prog(p[0])); } });
       });
     }
-    omenSet([[1e3, 'A Puddle of Night'], [1e6, 'A Cellar of Night'], [1e9, 'A Lake of Night'], [1e12, 'A Sea of Night'],
+    omenSet('Gloom gathered', [[1e3, 'A Puddle of Night'], [1e6, 'A Cellar of Night'], [1e9, 'A Lake of Night'], [1e12, 'A Sea of Night'],
       [1e15, 'A Sky of Night'], [1e18, 'An Age of Night'], [1e21, 'Night Without Edges'], [1e24, 'Night Without End']],
-      function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; }, true);
-    omenSet([[10, 'A Household'], [100, 'A Court'], [500, 'A City Below'], [1000, 'A Nation Below'], [2000, 'A World Below']],
-      function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; });
-    omenSet([[1, 'Full Attendance'], [50, 'Standing Room Only']],
+      function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; }, true, function (x) { return S.totalGloom / x; });
+    omenSet('Denizens bound at once', [[10, 'A Household'], [100, 'A Court'], [500, 'A City Below'], [1000, 'A Nation Below'], [2000, 'A World Below']],
+      function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; }, false, function (x) { return totalDenizens() / x; });
+    omenSet('Full attendance', [[1, 'Full Attendance'], [50, 'Standing Room Only']],
       function (x) { return 'Have at least ' + x + ' of every denizen.'; },
-      function (x) { return D.DENIZENS.every(function (d) { return cnt(d.id) >= x; }); });
-    omenSet([[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
+      function (x) { return D.DENIZENS.every(function (d) { return cnt(d.id) >= x; }); }, false, function (x) { var m = Infinity; D.DENIZENS.forEach(function (d) { m = Math.min(m, cnt(d.id)); }); return m / x; });
+    omenSet('Sunshafts sealed', [[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
       [125, 'No Light Left Standing'], [150, 'The Last Shaft']],
-      function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true);
-    omenSet([[100, 'Wet Hands'], [1000, 'Cold Hands'], [10000, 'No Hands Left']],
-      function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; }, true);
-    omenSet([[1, 'Snuffer'], [25, 'Wick-Thief'], [100, 'The Moths\' Revenge']],
-      function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; }, true);
-    omenSet([[1, 'Let Go'], [5, 'Practised Falling'], [10, 'Home Is Down']],
-      function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; }, true);
-    omenSet([[10, 'Observant'], [50, 'Devout']],
-      function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; });
-    omenSet([[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
-      function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true);
+      function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true, function (x) { return S.bestShaft / x; });
+    omenSet('Gathering by hand', [[100, 'Wet Hands'], [1000, 'Cold Hands'], [10000, 'No Hands Left']],
+      function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; }, true, function (x) { return S.clicks / x; });
+    omenSet('Stray Lanterns snuffed', [[1, 'Snuffer'], [25, 'Wick-Thief'], [100, 'The Moths\' Revenge']],
+      function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; }, true, function (x) { return S.lanterns / x; });
+    omenSet('Unlightings', [[1, 'Let Go'], [5, 'Practised Falling'], [10, 'Home Is Down']],
+      function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; }, true, function (x) { return S.unlightings / x; });
+    omenSet('Rite levels held', [[10, 'Observant'], [50, 'Devout']],
+      function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; }, false, function (x) { return totalRites() / x; });
+    omenSet('Echoes recovered', [[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
+      function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true, function (x) { return S.echoesTotal / x; });
 
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
@@ -748,7 +755,7 @@
       if (S.gloom < cost) return false;
       S.gloom -= cost;
       S.den[d.id] = n + k;
-      if (n === 0) say('A ' + d.name + ' answers the seat.');
+      if (n === 0) { say('A ' + d.name + ' answers the seat.'); emit('den', { id: d.id, name: d.name }); }
       afterChange();
       return true;
     }
@@ -835,7 +842,7 @@
         S.shaftTop = n + 1;
         if (n > S.bestShaft) {
           S.bestShaft = n;
-          if (n % 10 === 0) say(shaftName(n) + ' is undone. Sunshaft ' + n + ' is sealed.');
+          if (n % 10 === 0) { say(shaftName(n) + ' is undone. Sunshaft ' + n + ' is sealed.'); emit('boss', { n: n, name: shaftName(n) }); }
           if (n === FINAL_SHAFT && !S.ended) { S.ended = true; pendingEnding = true; }
         }
       }
@@ -1031,10 +1038,15 @@
       if (!u.shafts && (cnt('weaver') >= 1 || S.totalGloom >= 2000)) {
         u.shafts = true;
         say('Light. Something above has cut a shaft through the roof of the realm.');
+        emit('unlock', { what: 'Sunshafts', go: { dest: 'host', page: 'shaft' } });
       }
-      if (!u.rites && S.echoesTotal >= 1) { u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.'); }
+      if (!u.rites && S.echoesTotal >= 1) {
+        u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.');
+        emit('unlock', { what: 'Rites', go: { dest: 'host', page: 'rite' } });
+      }
       if (!u.unlight && (S.runGloom >= 1e7 || S.unlightings > 0)) {
         u.unlight = true; say('The realm is growing heavy. The oldest page of the Ledger describes what to do about that.');
+        emit('unlock', { what: 'The Unlighting', go: { dest: 'deep', page: 'unl' } });
       }
 
       // After a failed Lampwarden the Host returns on its own once it can win.
@@ -1054,7 +1066,7 @@
       }
 
       OMENS.forEach(function (o) {
-        if (!S.omens[o.id] && o.cond()) { S.omens[o.id] = 1; say('Omen: ' + o.name + '.'); dirty.omens = true; }
+        if (!S.omens[o.id] && o.cond()) { S.omens[o.id] = 1; say('Omen: ' + o.name + '.'); dirty.omens = true; emit('omen', { id: o.id, name: o.name }); }
       });
 
       var f = {
@@ -1066,9 +1078,86 @@
         if (!S.codex[c.id] && c.when(f)) {
           S.codex[c.id] = 1; dirty.codex = true;
           if (!(S.nav.dest === 'ledger' && S.nav.page.ledger === 'codex')) S.codexUnread++;
-          if (c.id !== 'waking') say('Codex: ' + c.title + '.');
+          if (c.id !== 'waking') { say('Codex: ' + c.title + '.'); emit('codex', { id: c.id, title: c.title }); }
         }
       });
+    }
+
+    /* ---------- what to do next ---------- */
+
+    /* The facts the Seat's objective strip chooses from. Pure reads of the state. */
+    function facts() {
+      var f = { denizens: totalDenizens(), work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
+      var ups = availableUpgs();
+      for (i = 0; i < ups.length; i++) if (S.gloom >= ups[i].cost) { f.work = ups[i].name; break; }
+      if (S.unlocked.shafts && S.shaftTop % 10 === 0) {
+        var need = shaftMaxHp(S.shaftTop) / C.might / bossMax();
+        if (need > 1) f.boss = { mult: need, name: shaftName(S.shaftTop) };
+      }
+      f.unlight = S.unlocked.unlight && S.unlightings === 0 && glassGain() >= 1;
+      for (i = 0; i < D.DENIZENS.length; i++) {
+        var d = D.DENIZENS[i];
+        if (cnt(d.id) > 0) continue;
+        var cost = denCost(d, 0, 1), eta = S.gloom >= cost ? 0 : (C.gps > 0 ? (cost - S.gloom) / C.gps : -1);
+        if (eta >= 0 && eta <= 600) f.nextDen = { name: d.name, when: eta === 0 ? 'reach' : fmtTime(eta) };
+        break;
+      }
+      if (S.unlocked.rites) {
+        for (i = 0; i < D.RITES.length; i++) {
+          var r = D.RITES[i];
+          if (S.echoes >= riteCost(r) && !(r.max && rl(r.id) >= r.max)) { f.rite = true; break; }
+        }
+      }
+      var best = 0;
+      OMENS.forEach(function (o) {
+        if (S.omens[o.id]) return;
+        var q = o.prog();
+        if (q >= 0.75 && q < 1 && q > best) { best = q; f.omen = { name: o.name, ratio: q }; }
+      });
+      return f;
+    }
+
+    /* { id, text, go } for the first applicable objective. */
+    function objective() {
+      var f = facts();
+      for (var i = 0; i < D.OBJECTIVES.length; i++) {
+        var o = D.OBJECTIVES[i];
+        if (o.when(f)) return { id: o.id, text: o.text(f), go: o.go };
+      }
+      return { id: 'quiet', text: 'The realm is quiet.', go: null };
+    }
+
+    /* "in 3m 20s" for how long until have reaches cost at income per second. Empty when it cannot be said. */
+    function eta(have, cost, income) {
+      if (have >= cost || !(income > 0)) return '';
+      var sec = (cost - have) / income;
+      return sec > 86400 ? 'over a day' : 'in ' + fmtTime(sec);
+    }
+
+    /* A rolling rate over the last windowSec seconds of samples (total, time in seconds). */
+    function rateMeter(windowSec) {
+      var s = [];
+      return {
+        sample: function (total, t) { s.push([t, total]); while (s.length > 1 && t - s[0][0] > windowSec) s.shift(); },
+        rate: function () {
+          if (s.length < 2) return 0;
+          var a = s[0], b = s[s.length - 1], dt = b[0] - a[0];
+          return dt > 0 ? Math.max(0, (b[1] - a[1]) / dt) : 0;
+        },
+        reset: function () { s = []; }
+      };
+    }
+
+    /* The factors that make up a channel right now, by source, for the "Why" popover. */
+    var SOURCE_LABELS = { nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    function breakdown(channel) {
+      var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
+      SOURCES.forEach(function (src) {
+        var r = src.fn(S, ctx);
+        if (!r || r[channel] === undefined) return;
+        if (add ? r[channel] !== 0 : Math.abs(r[channel] - 1) > 1e-9) out.push({ name: SOURCE_LABELS[src.name] || src.name, value: r[channel] });
+      });
+      return out;
     }
 
     /* ---------- the engine ---------- */
@@ -1092,7 +1181,8 @@
       shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours, bossMax: bossMax,
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
-      addSource: addSource, mods: mods,
+      addSource: addSource, mods: mods, breakdown: breakdown,
+      facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
       rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },
       pick: pick, shuffle: shuffle, weighted: weighted,
       // internals the tests exercise

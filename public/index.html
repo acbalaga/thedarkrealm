@@ -32,7 +32,7 @@
     </div>
   </div>
   <div class="resources">
-    <div class="res res-gloom"><span class="res-label">Gloom</span><span class="res-val" id="r-gloom">0</span><span class="res-sub" id="r-gps">0 /s</span></div>
+    <div class="res res-gloom"><span class="res-label">Gloom</span><span class="res-val" id="r-gloom">0</span><span class="res-sub" id="r-gps">0 /s</span><button id="why-gloom" class="why-hit" type="button" aria-label="Why: what makes up Gloom per second" aria-haspopup="dialog"></button></div>
     <div class="res res-echo" id="res-echo" hidden><span class="res-label">Echoes</span><span class="res-val" id="r-echo">0</span><span class="res-sub" id="r-might">Might 1</span></div>
     <div class="res res-glass" id="res-glass" hidden><span class="res-label">Nightglass</span><span class="res-val" id="r-glass">0</span><span class="res-sub" id="r-glassb">+0%</span></div>
   </div>
@@ -53,11 +53,12 @@
       <button id="lantern" type="button" hidden aria-label="Snuff the Stray Lantern"><span></span></button>
       <div id="floaters" aria-hidden="true"></div>
       <p class="well-hint" id="well-hint">Touch the Stillwell to gather Gloom</p>
+      <button id="objective" class="objective" type="button" hidden></button>
       <div id="buffs"><button id="snuff" class="btn small-btn" type="button" hidden>Snuff the lantern</button></div>
     </div>
     <div class="log-box">
       <h2>Whispers</h2>
-      <ul id="log" aria-live="polite" tabindex="0" aria-label="Whispers"></ul>
+      <ul id="log" tabindex="0" aria-label="Whispers"></ul>
     </div>
   </section>
 
@@ -68,6 +69,8 @@
   </section>
 </main>
 
+<div id="toasts"></div>
+<div id="popover" class="popover" role="dialog" aria-label="Why" hidden></div>
 <nav id="bar" aria-label="Destinations"></nav>
 <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
@@ -83,6 +86,7 @@
 <script src="js/data.js"></script>
 <script src="js/core.js"></script>
 <script src="js/nav.js"></script>
+<script src="js/toast.js"></script>
 <script src="js/version.js"></script>
 <script src="js/game.js"></script>
 </body>

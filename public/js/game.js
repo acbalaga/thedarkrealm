@@ -2,8 +2,8 @@
 (function () {
   'use strict';
 
-  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create();
-  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; } catch (e) {}   // keep the tables and the rules out of console reach
+  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create(), TOASTQ = window.TDR_TOAST.createQueue(5);
+  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; delete window.TDR_TOAST; } catch (e) {}   // keep the tables and the rules out of console reach
   var CLICK_CAP = 14;       // hand gathers accepted per second
   var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
   try { delete window.TDR_VERSION; } catch (e) {}
@@ -62,6 +62,22 @@
     if (node._price.text.nodeValue !== text) node._price.text.nodeValue = text;
   }
 
+  /* Distance to a price: a 2 px underline filled to have / cost in the currency's colour, and "in 3m 20s"
+     when the income is known. Buy controls update this at most twice a second (affordNow), not every frame. */
+  var affordNow = true, affordAt = 0, forceAfford = false;
+  function afford(node, kind, have, cost, income) {
+    if (!node._afford) {
+      var bar = el('i', 'prog ' + kind), eta = el('span', 'eta');
+      node.appendChild(bar); node.appendChild(eta);
+      node._afford = { bar: bar, eta: eta };
+    }
+    var pct = (cost > 0 ? Math.min(1, have / cost) : 1) * 100;
+    node._afford.bar.style.width = pct.toFixed(1) + '%';
+    var t = kind === 'glass' ? '' : engine.eta(have, cost, income);
+    if (node._afford.eta.textContent !== t) node._afford.eta.textContent = t;
+  }
+  function buyAgain() { forceAfford = true; render(); }
+
   /* Builds a node without ever parsing a string as HTML. props may set className, id, rows,
      readOnly and type. children is a string (a text node), a node, or an array of those. */
   function h(tag, props, children) {
@@ -95,7 +111,89 @@
     n.textContent = '';
     setTimeout(function () { n.textContent = msg; }, 30);
   }
-  function flushToasts() {}      // the toast queue (TDR-051) hooks in here: held while a dialog is open
+
+  /* ---------- toasts ----------
+     One at a time, four seconds each, paused while the pointer or focus is on it, held while a dialog is
+     open. The rules already write their own Whisper for the events that raise toasts, so only toasts raised
+     here (an update, a reminder) ask for a Whisper of their own with whisper: true. */
+  var toastShown = false, toastLeft = 0, toastPaused = false, toastTimer = 0;
+  function toast(t) {
+    if (t.whisper) say(t.title + (t.text ? ' · ' + t.text : '') + '.');
+    TOASTQ.push(t);
+    flushToasts();
+  }
+  function flushToasts() {
+    if (toastShown) return;
+    var t = TOASTQ.next(modalOpen);
+    if (!t) return;
+    toastShown = true; toastLeft = 4000;
+    var box = el('div', 'toast k-' + t.kind);
+    var body = el('button', 'toast-body');
+    body.type = 'button';
+    body.appendChild(el('b', 'toast-title', t.title));
+    if (t.text) body.appendChild(el('span', 'toast-text', t.text));
+    body.onclick = function () { if (t.go) goDest(t.go.dest, t.go.page); endToast(); };
+    var x = el('button', 'toast-x', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.onclick = endToast;
+    box.appendChild(body); box.appendChild(x);
+    box.addEventListener('mouseenter', function () { toastPaused = true; });
+    box.addEventListener('mouseleave', function () { toastPaused = false; });
+    box.addEventListener('focusin', function () { toastPaused = true; });
+    box.addEventListener('focusout', function () { toastPaused = false; });
+    $('toasts').replaceChildren(box);
+    live(t.title + (t.text ? '. ' + t.text : ''));
+    clearInterval(toastTimer);
+    toastTimer = setInterval(function () {
+      if (toastPaused) return;
+      toastLeft -= 100;
+      if (toastLeft <= 0) endToast();
+    }, 100);
+  }
+  function endToast() {
+    clearInterval(toastTimer);
+    toastShown = false; toastPaused = false;
+    $('toasts').replaceChildren();
+    flushToasts();
+  }
+
+  /* What the rules noticed becomes a toast. */
+  function onEvent(ev) {
+    if (ev.type === 'omen') toast({ kind: 'omen', title: 'Omen', text: ev.name + ' · +1% Gloom', go: { dest: 'ledger', page: 'omen' } });
+    else if (ev.type === 'codex') toast({ kind: 'codex', title: 'Codex', text: ev.title, go: { dest: 'ledger', page: 'codex' } });
+    else if (ev.type === 'unlock') toast({ kind: 'unlock', title: 'Unlocked', text: ev.what, go: ev.go });
+    else if (ev.type === 'boss') toast({ kind: 'unlock', title: 'Lampwarden undone', text: ev.name, go: { dest: 'host', page: 'shaft' } });
+    else if (ev.type === 'den') toast({ kind: 'unlock', title: 'Bound', text: ev.name, go: { dest: 'realm', page: 'den' } });
+  }
+
+  /* ---------- the Why popover ---------- */
+  var whyAnchor = null;
+  function hideWhy() {
+    var pop = $('popover');
+    if (pop.hidden) return false;
+    pop.hidden = true;
+    if (whyAnchor && document.contains(whyAnchor) && pop.contains(document.activeElement)) whyAnchor.focus();
+    whyAnchor = null;
+    return true;
+  }
+  function showWhy(anchor, title, channel, base) {
+    var pop = $('popover');
+    if (!pop.hidden && whyAnchor === anchor) { hideWhy(); return; }
+    var total = engine.C.mods[channel], rows = engine.breakdown(channel);
+    var list = el('ul', 'why-list');
+    if (base) list.appendChild(h('li', null, [base.label, ' ', h('b', null, fmt(base.value))]));
+    rows.forEach(function (r) { list.appendChild(h('li', null, [r.name + ' ', h('b', null, '\u00d7' + (r.value >= 100 ? fmt(r.value) : r.value.toFixed(2)))])); });
+    if (!rows.length && !base) list.appendChild(h('li', { className: 'dim' }, 'Nothing is adding to this yet.'));
+    pop.replaceChildren(h('p', { className: 'why-title' }, title), list,
+      h('p', { className: 'why-total' }, ['Together ', h('b', null, '\u00d7' + (total >= 100 ? fmt(total) : total.toFixed(2)))]));
+    pop.hidden = false;
+    whyAnchor = anchor;
+    var r = anchor.getBoundingClientRect(), w = Math.min(280, window.innerWidth - 24);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(12, Math.min(window.innerWidth - w - 12, r.left)) + 'px';
+    pop.style.top = (r.bottom + 6) + 'px';
+  }
 
   /* Arrow keys, Home and End move between the controls of a tab list or radio group, and only the
      selected one is in the tab order. */
@@ -345,7 +443,7 @@
       var bl = el('span', 'buy-label', 'Bind');
       var bc = el('span', 'buy-cost', '');
       btn.appendChild(bl); btn.appendChild(bc);
-      btn.onclick = function () { engine.buyDenizen(d.id); render(); };
+      btn.onclick = function () { engine.buyDenizen(d.id); buyAgain(); };
       row.appendChild(glyph); row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
       return { d: d, i: i, row: row, count: count, info: info, btn: btn, bl: bl, bc: bc };
@@ -369,9 +467,10 @@
         var share = C.denGps > 0 ? Math.round(C.denOut[d.id] / C.denGps * 100) : 0;
         r.info.textContent = 'Each ' + fmt(C.denEach[d.id]) + '/s' + (n ? '  ·  together ' + fmt(C.denOut[d.id]) + '/s (' + share + '%)' : '') +
           '  ·  Might ' + fmt(Math.pow(3, r.i));
-        r.bl.textContent = 'Bind ×' + k;
+        r.bl.textContent = S.opts.buy === 'max' && maxBuy(d, n) < 1 ? 'Bind' : 'Bind ×' + k;
         setPrice(r.bc, 'gloom', fmt(cost) + ' Gloom');
         r.btn.disabled = S.gloom < cost;
+        if (affordNow) afford(r.btn, 'gloom', S.gloom, cost, C.gps);
       });
     };
   }
@@ -394,7 +493,7 @@
         b.appendChild(el('span', 'card-desc', u.desc));
         var c = el('span', 'card-cost', '');
         b.appendChild(c);
-        b.onclick = function () { engine.buyUpg(u.id); render(); };
+        b.onclick = function () { engine.buyUpg(u.id); buyAgain(); };
         grid.appendChild(b);
         return { u: u, b: b, c: c };
       });
@@ -408,6 +507,7 @@
       cards.forEach(function (x) {
         setPrice(x.c, 'gloom', fmt(x.u.cost) + ' Gloom');
         x.b.disabled = S.gloom < x.u.cost;
+        if (affordNow) afford(x.b, 'gloom', S.gloom, x.u.cost, C.gps);
       });
       empty.hidden = list.length > 0;
       var n = 0; for (var k in S.upg) n++;
@@ -446,6 +546,13 @@
     cb.onchange = function () { engine.setAutoAdvance(cb.checked); render(); };
     ctl.appendChild(prev); ctl.appendChild(next); ctl.appendChild(top); ctl.appendChild(lab);
     page.appendChild(ctl);
+    var why = el('button', 'btn', 'Why this Might'); why.type = 'button';
+    why.setAttribute('aria-haspopup', 'dialog');
+    why.onclick = function (ev) {
+      ev.stopPropagation();
+      showWhy(why, 'What makes up Host Might', 'might', { label: 'Denizens, the base', value: C.might / C.mods.might });
+    };
+    page.appendChild(why);
     var note = el('p', 'dim small');
     page.appendChild(note);
 
@@ -491,7 +598,7 @@
       var btn = el('button', 'btn buy echo'); btn.type = 'button';
       var bl = el('span', 'buy-label', 'Perform'); var bc = el('span', 'buy-cost');
       btn.appendChild(bl); btn.appendChild(bc);
-      btn.onclick = function () { engine.buyRite(r.id); render(); };
+      btn.onclick = function () { engine.buyRite(r.id); buyAgain(); };
       row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
       return { r: r, lvl: lvl, btn: btn, bc: bc, bl: bl };
@@ -503,6 +610,7 @@
         x.bl.textContent = maxed ? 'Complete' : 'Perform';
         setPrice(x.bc, 'echo', maxed ? '' : fmt(riteCost(x.r)) + ' Echoes');
         x.btn.disabled = maxed || S.echoes < riteCost(x.r);
+        if (affordNow) afford(x.btn, 'echo', maxed ? 0 : S.echoes, maxed ? 0 : riteCost(x.r), echoMeter.rate());
       });
     };
   }
@@ -536,7 +644,7 @@
       b.appendChild(el('span', 'card-desc', p.desc));
       var c = el('span', 'card-cost');
       b.appendChild(c);
-      b.onclick = function () { engine.buyPerk(p.id); render(); };
+      b.onclick = function () { engine.buyPerk(p.id); buyAgain(); };
       grid.appendChild(b);
       return { p: p, b: b, c: c };
     });
@@ -553,31 +661,60 @@
         x.b.classList.toggle('owned', own);
         setPrice(x.c, 'glass', own ? 'Set' : fmt(x.p.cost) + ' Nightglass');
         x.b.disabled = own || S.glass < x.p.cost;
+        if (affordNow) afford(x.b, 'glass', own ? x.p.cost : S.glass, x.p.cost, 0);
       });
     };
   }
 
-  /* Omens */
+  /* Omens, grouped by what they count */
   function buildOmens(page) {
     var head = el('p', 'lede');
     page.appendChild(head);
-    var grid = el('div', 'grid omens');
-    page.appendChild(grid);
-    var tiles = OMENS.map(function (o) {
-      var t = el('div', 'omen');
-      var nm = el('span', 'card-name'), mark = el('span', 'omen-mark', '○ ');
-      mark.setAttribute('aria-hidden', 'true');
-      nm.appendChild(mark); nm.appendChild(document.createTextNode(o.name));
-      t.appendChild(nm);
-      t.appendChild(el('span', 'card-desc', o.desc));
-      grid.appendChild(t);
-      return { o: o, t: t, mark: mark };
+    var bySet = {}, order = [];
+    OMENS.forEach(function (o) {
+      if (!bySet[o.set]) { bySet[o.set] = { name: o.set, items: [] }; order.push(bySet[o.set]); }
+      bySet[o.set].items.push(o);
+    });
+    var groups = order.map(function (g) {
+      var title = el('h3', 'sub-head');
+      var bar = el('div', 'bar thin omen-bar'), fill = el('div', 'bar-fill omen');
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
+      bar.appendChild(fill);
+      var grid = el('div', 'grid omens');
+      var tiles = g.items.map(function (o) {
+        var t = el('div', 'omen');
+        var nm = el('span', 'card-name'), mark = el('span', 'omen-mark', '○ ');
+        mark.setAttribute('aria-hidden', 'true');
+        nm.appendChild(mark); nm.appendChild(document.createTextNode(o.name));
+        t.appendChild(nm);
+        t.appendChild(el('span', 'card-desc', o.desc));
+        grid.appendChild(t);
+        return { o: o, t: t, mark: mark };
+      });
+      page.appendChild(title); page.appendChild(bar); page.appendChild(grid);
+      return { g: g, title: title, bar: bar, fill: fill, tiles: tiles };
     });
     return function () {
       head.textContent = 'Signs that the dark is going well. ' + C.omens + ' of ' + OMENS.length + ' seen. Each adds 1% to all Gloom (+' + C.omens + '%).';
+      groups.forEach(function (gr) {
+        var got = 0, next = null;
+        gr.g.items.forEach(function (o) { if (S.omens[o.id]) got++; else if (!next) next = o; });
+        var label = gr.g.name + ' · ' + got + ' of ' + gr.g.items.length;
+        if (gr.title.textContent !== label) gr.title.textContent = label;
+        gr.bar.hidden = !next;
+        if (next) {
+          var pct = Math.floor(next.prog() * 100);
+          gr.fill.style.width = pct + '%';
+          gr.bar.setAttribute('aria-valuenow', String(pct));
+          gr.bar.setAttribute('aria-label', 'Progress toward ' + next.name);
+        }
+      });
       if (!engine.dirty.omens) return;
       engine.dirty.omens = false;
-      tiles.forEach(function (x) { var got = !!S.omens[x.o.id]; x.t.classList.toggle('got', got); x.mark.textContent = got ? '✓ ' : '○ '; });
+      groups.forEach(function (gr) {
+        gr.tiles.forEach(function (x) { var got = !!S.omens[x.o.id]; x.t.classList.toggle('got', got); x.mark.textContent = got ? '\u2713 ' : '\u25cb '; });
+      });
     };
   }
 
@@ -810,7 +947,7 @@
   function offerUpdate(worker) {
     if (waitingWorker || !navigator.serviceWorker.controller) return;   // the first install is not an update
     waitingWorker = worker;
-    say('A newer realm is ready. Apply it from the Realm tab.');
+    toast({ kind: 'update', title: 'A newer realm is ready', text: 'Apply it from Ledger, Keeping.', go: { dest: 'ledger', page: 'set' }, whisper: true });
   }
   function applyUpdate() {
     if (!waitingWorker) return;
@@ -822,6 +959,10 @@
   /* ---------- render ---------- */
 
   function render() {
+    var rt = monoNow();
+    affordNow = forceAfford || rt - affordAt >= 500;
+    if (affordNow) affordAt = rt;
+    forceAfford = false;
     $('r-gloom').textContent = fmt(S.gloom);
     $('r-gps').textContent = fmt(C.gps) + ' /s';
     $('res-echo').hidden = !S.unlocked.shafts;
@@ -845,6 +986,7 @@
     setBuff('hush', 'Deep Hush', S.buffs.hush);
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
+    paintObjective();
     syncLantern();
     var title = fmt(S.gloom) + ' Gloom · The Dark Realm', tnow = wallNow();
     if (document.title !== title && tnow - titleAt > 10000) { document.title = title; titleAt = tnow; }
@@ -868,6 +1010,19 @@
     } else if (n.parentNode) n.parentNode.removeChild(n);
   }
 
+  /* ---------- the next objective ---------- */
+  var objectiveId = '';
+  function paintObjective() {
+    var b = $('objective');
+    b.hidden = S.clicks < 15;
+    if (b.hidden || !affordNow) return;
+    var o = engine.objective();
+    if (b.textContent !== o.text) b.textContent = o.text;
+    b.disabled = !o.go;
+    objectiveId = o.id;
+    b.onclick = o.go ? function () { goDest(o.go.dest, o.go.page); } : null;
+  }
+
   /* ---------- the Stillwell ---------- */
 
   /* Only real input events count, and only so many per second. */
@@ -885,7 +1040,7 @@
      Ignored while typing, with Ctrl, Alt or Meta held, while a dialog is open, or when switched off in Keeping. */
   var KEY_DEST = { g: 'seat', r: 'realm', h: 'host', d: 'deep', l: 'ledger' };
   function onKey(ev) {
-    if (ev.key === 'Escape') { if (closeTopModal()) ev.preventDefault(); return; }
+    if (ev.key === 'Escape') { if (hideWhy() || closeTopModal()) ev.preventDefault(); return; }
     if (!S.opts.keys || ev.ctrlKey || ev.altKey || ev.metaKey || modalOpen) return;
     var t = ev.target;
     if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
@@ -1007,6 +1162,8 @@
 
   var wiping = false;
 
+  var echoMeter = engine.rateMeter(60), meterAt = 0;
+
   function showAway(r) {
     var items = [h('li', null, [h('b', null, fmt(r.gloom)), ' Gloom gathered'])];
     if (r.echoes > 0) items.push(h('li', null, [h('b', null, fmt(r.echoes)), ' Echoes recovered']));
@@ -1021,7 +1178,13 @@
   function frame() {
     if (engine.halted) return;
     var r = engine.tick();
-    if (r.away) showAway(r.away);
+    if (r.away) { showAway(r.away); echoMeter.reset(); }
+    var pt = monoNow() / 1000;
+    if (pt - meterAt >= 1) {            // present time only: a gap longer than 5 seconds means the page was not running
+      if (pt - meterAt > 5) echoMeter.reset();
+      echoMeter.sample(S.echoesTotal, pt); meterAt = pt;
+    }
+    engine.drainEvents().forEach(onEvent);
     if (r.ending) showEnding();
     render();
   }
@@ -1034,6 +1197,11 @@
     guardRepeat($('well'));
     guardRepeat($('lantern'));
     $('well').addEventListener('click', wellClick);
+    $('why-gloom').addEventListener('click', function (ev) { ev.stopPropagation(); showWhy($('why-gloom'), 'What makes up Gloom per second', 'gloom'); });
+    document.addEventListener('click', function (ev) {
+      var pop = $('popover');
+      if (!pop.hidden && !pop.contains(ev.target) && ev.target !== whyAnchor) hideWhy();
+    });
     guardRepeat($('snuff'));
     $('snuff').addEventListener('click', function (ev) {
       if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
