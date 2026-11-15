@@ -212,7 +212,7 @@ function noteMilestones(e, sim) {
   [6, 12, 18, 24].forEach(function (n) { mark('Pane: ' + n + ' lights', e.paneCount() >= n); });
   mark('Unlighting first possible (yield >= 1)', S.unlightings >= 1 || e.glassGain() >= 1);
   mark('First Unlighting', S.unlightings >= 1);
-  [10, 50, 100, 150].forEach(function (n) { mark('Sunshaft ' + n, S.bestShaft >= n); });
+  [10, 50, 100, 150, 175, 200].forEach(function (n) { mark('Sunshaft ' + n, S.bestShaft >= n); });
   var all = true;
   sim.D.PERKS.forEach(function (p) {
     mark('Perk: ' + p.name, e.perk(p.id));

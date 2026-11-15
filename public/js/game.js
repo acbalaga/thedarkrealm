@@ -170,7 +170,7 @@
     if (ev.type === 'omen') toast({ kind: 'omen', title: 'Omen', text: ev.name + ' · +1% Gloom', go: { dest: 'ledger', page: 'omen' } });
     else if (ev.type === 'codex') toast({ kind: 'codex', title: 'Codex', text: ev.title, go: { dest: 'ledger', page: 'codex' } });
     else if (ev.type === 'unlock') toast({ kind: 'unlock', title: 'Unlocked', text: ev.what, go: ev.go });
-    else if (ev.type === 'boss') toast({ kind: 'unlock', title: 'Lampwarden undone', text: ev.name, go: { dest: 'host', page: 'shaft' } });
+    else if (ev.type === 'boss') { toast({ kind: 'unlock', title: 'Lampwarden undone', text: ev.name, go: { dest: 'host', page: 'shaft' } }); if (ev.n === engine.DEEP_SHAFT) showRoot(); }
     else if (ev.type === 'slack') toast({ kind: 'sounding', title: 'The line has gone slack', text: 'Something is tied to it.', go: { dest: 'host', page: 'soundings' } });
     else if (ev.type === 'relic') toast({ kind: 'sounding', title: 'From the Sea', text: ev.name, go: { dest: 'host', page: 'soundings' } });
     else if (ev.type === 'keeping') toast({ kind: 'unlock', title: 'A vow is kept', text: ev.name, go: { dest: 'deep', page: 'vows' } });
@@ -292,6 +292,10 @@
     return false;
   }
 
+  function showRoot() {
+    var pg = D.CODEX.filter(function (c) { return c.id === 'root'; })[0];
+    modal('The Hole in the Field', h('p', null, pg ? pg.text : ''), [{ label: 'Come home', primary: true }]);
+  }
   function showEnding() {
     modal('The First Lamp', [
       h('p', null, 'The last shaft closes behind your Host like an eye.'),
@@ -482,7 +486,7 @@
       });
       rows.forEach(function (r) {
         var d = r.d, n = cnt(d.id);
-        var vis = r.i === 0 || n > 0 || cnt(D.DENIZENS[r.i - 1].id) > 0 || S.runGloom >= d.cost * 0.25;
+        var vis = engine.denLive(d) && (r.i === 0 || n > 0 || cnt(D.DENIZENS[r.i - 1].id) > 0 || S.runGloom >= d.cost * 0.25);
         r.row.hidden = !vis;
         if (!vis) return;
         r.tog.hidden = !perk('usher'); r.tcb.checked = !!S.auto.den[d.id];
@@ -548,6 +552,8 @@
   function buildShafts(page) {
     page.appendChild(el('p', 'lede', 'The Auric Concord cuts Sunshafts into the realm to burn shadow for lamp-fuel. Your Host climbs each one and seals it. ' +
       'It fights on its own. Every tenth shaft is held by a Lampwarden, who must be undone in ' + engine.bossMax() + ' seconds.'));
+    var older = el('p', 'lede', 'Past the First Lamp the shafts are older than the Concord.');
+    older.hidden = true; page.appendChild(older);
     var box = el('div', 'shaft-box');
     var title = el('h3', 'shaft-title');
     var sub = el('div', 'shaft-sub');
@@ -591,6 +597,7 @@
     return function () {
       var n = S.shaft, boss = n % 10 === 0, max = shaftMaxHp(n);
       title.textContent = shaftName(n);
+      older.hidden = S.bestShaft < 150;
       sub.textContent = boss ? 'Lampwarden of Sunshaft ' + n : (n >= S.shaftTop ? 'The frontier' : 'Already sealed once. The Host is gleaning it for Echoes.');
       box.classList.toggle('boss', boss);
       var hp = Math.max(0, S.shaftHp);

@@ -28,7 +28,11 @@ window.TDR_DATA = (function () {
     { id: 'orchard', glyph: '❀', name: 'Starless Orchard', plural: 'Starless Orchards', tool: 'Grafts', cost: 1.2e11, rate: 9.5e5,
       desc: 'Trees that fruit only in total dark. Each fruit is a small night.' },
     { id: 'sleeper', glyph: '◉', name: 'Sleeper Below', plural: 'Sleepers Below', tool: 'Dreams', cost: 3e12, rate: 7e6,
-      desc: 'It dreams the realm darker. Do not ask what else it dreams.' }
+      desc: 'It dreams the realm darker. Do not ask what else it dreams.' },
+    { id: 'bell', glyph: '\u265c', name: 'Drowned Bell', plural: 'Drowned Bells', tool: 'Clappers', cost: 7e13, rate: 5.2e7,
+      desc: 'Cast to call people up out of a mine. It rang once too late.', gate: 'shaft150' },
+    { id: 'wright', glyph: '\u25c8', name: 'Pane-Wright', plural: 'Pane-Wrights', tool: 'Leads', cost: 1.8e15, rate: 3.9e8,
+      desc: 'Fits dark into dark with a border of darker. It hums while it works. The tune is hers.', gate: 'pane12' }
   ];
 
   var UPG_TIERS = [
@@ -455,7 +459,9 @@ window.TDR_DATA = (function () {
     { id: 'chamberlain', cost: 160, name: 'The Chamberlain', desc: 'After a failed Lampwarden the Host returns as soon as it could win in 60% of the time (was 80%), and passes shafts it has already sealed at ten a second.' },
     { id: 'hunger', cost: 200, name: 'Lantern-Hunger', desc: 'Stray Lanterns yield three times as much and their boons last twice as long.' },
     { id: 'queen', cost: 600, name: 'The Queen\'s Reflection', desc: 'All Gloom, Might and Echoes ×5.' },
-    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' }
+    { id: 'patient', cost: 1200, name: 'The Patient Dark', desc: 'The realm works up to 48 hours while you are away. Requires Unsleeping.', needs: 'unsleeping' },
+    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' },
+    { id: 'older', cost: 5000, name: 'Older Than Lamps', desc: 'All Gloom and Might ×1.7.' }
   ];
 
   var BOSSES = {
@@ -473,7 +479,12 @@ window.TDR_DATA = (function () {
     120: 'The Unblinking Lens',
     130: 'The Concord\'s Own Shadow',
     140: 'Solar Chancellor Ibe Tarrow',
-    150: 'The First Lamp'
+    150: 'The First Lamp',
+    160: 'The Tin Sun',
+    170: 'A Chain With No Top',
+    180: 'The Furnace That Was a Country',
+    190: 'The Last Miner\'s Candle',
+    200: 'The Hole in the Field'
   };
 
   /* Codex entries. `when` is evaluated against a small facts object built in game.js. */

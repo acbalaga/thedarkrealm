@@ -15,6 +15,7 @@
   var MARCH = 0.25;         // seconds the Host needs between shafts
   var BOSS_TIME = 45;       // seconds allowed against a Lampwarden
   var FINAL_SHAFT = 150;
+  var DEEP_SHAFT = 200;
   var GLASS_EXP = 0.3;      // Nightglass = (run Gloom / 1e9) ^ this
   var NAV_DESTS = ['seat', 'realm', 'host', 'deep', 'ledger'];
   // Where each page of the first interface (one flat row of tabs) lives in the five destinations.
@@ -307,6 +308,10 @@
       if (s.gloom > s.runGloom) { s.gloom = s.runGloom; fixes++; }
       if (s.echoes > s.echoesTotal) { s.echoes = s.echoesTotal; fixes++; }
 
+      // The Bell is only found past the First Lamp, and the Patient Dark only sits on the Unsleeping setting.
+      if ((s.den.bell || 0) > 0 && s.bestShaft < FINAL_SHAFT) { delete s.den.bell; for (i = 0; i < D.UPG_TIERS.length; i++) delete s.upg['bell_' + i]; fixes++; }
+      if (s.perks.patient && !s.perks.unsleeping) { delete s.perks.patient; fixes++; }
+
       // A denizen working needs the denizens it is for.
       var stripped = false;
       D.DENIZENS.forEach(function (d) {
@@ -594,7 +599,7 @@
 
     /* ---------- formatting ---------- */
 
-    var SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    var SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
 
     function fmt(n) {
       if (!isFinite(n)) return '∞';
@@ -665,7 +670,7 @@
       function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; }, false, function (x) { return totalDenizens() / x; });
     omenSet('Full attendance', [[1, 'Full Attendance'], [50, 'Standing Room Only']],
       function (x) { return 'Have at least ' + x + ' of every denizen.'; },
-      function (x) { return D.DENIZENS.every(function (d) { return cnt(d.id) >= x; }); }, false, function (x) { var m = Infinity; D.DENIZENS.forEach(function (d) { m = Math.min(m, cnt(d.id)); }); return m / x; });
+      function (x) { return D.DENIZENS.every(function (d) { return !denLive(d) || cnt(d.id) >= x; }); }, false, function (x) { var m = Infinity; D.DENIZENS.forEach(function (d) { if (denLive(d)) m = Math.min(m, cnt(d.id)); }); return m / x; });
     omenSet('Sunshafts sealed', [[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
       [125, 'No Light Left Standing'], [150, 'The Last Shaft']],
       function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true, function (x) { return S.bestShaft / x; });
@@ -777,18 +782,29 @@
       return Math.ceil(r.base * Math.pow(r.g, level) * modsFor(s).riteCost);
     }
 
+    [[175, 'Older Chains'], [200, 'Under the Seat']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'Sunshafts sealed', name: p[1], desc: 'Seal Sunshaft ' + p[0] + '.', mono: true,
+        cond: function () { return S.bestShaft >= p[0]; }, prog: function () { return Math.min(1, S.bestShaft / p[0]); } });
+    });
+
     function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n % 10 === 0 ? 6 : 1); }
     function shaftReward(n) {
       return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult * (n % 10 === 0 && C.lidless ? 2 : 1));
     }
     function shaftName(n) {
+      if (n > FINAL_SHAFT && n % 10 !== 0) return 'Elder Shaft ' + n;
       if (n % 10 !== 0) return 'Sunshaft ' + n;
       return D.BOSSES[n] || 'Lampwarden of the ' + n + 'th Chain';
     }
     function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP) * modsFor(S).glass); }
     function awayPace() { return Math.max(0.1, Math.min(1, 0.5 + awayMods().awayPace)); }
     function bossMax() { return S.vow === 'chain' ? 20 : Math.max(15, BOSS_TIME + modsFor(S).bossTime); }
-    function awayCapHours() { return perk('unsleeping') ? 24 : 8; }
+    function awayCapHours() { return perk('patient') && perk('unsleeping') ? 48 : perk('unsleeping') ? 24 : 8; }
+    /* Whether the player can see a denizen at all. The first ten always; the Bell once Sunshaft 150 is sealed; the Wright at 12 Pane lights. */
+    function denLive(d, s) {
+      s = s || S;
+      return d.gate === 'shaft150' ? s.bestShaft >= FINAL_SHAFT : d.gate === 'pane12' ? paneCount(s) >= 12 : true;
+    }
 
     function availableUpgs() {
       return UPGS.filter(function (u) { return !S.upg[u.id] && u.show(); })
@@ -992,6 +1008,7 @@
       if (p.halls) out.echo *= 2;
       if (p.queen) { out.gloom *= 5; out.might *= 5; out.echo *= 5; }
       if (p.further) { out.gloom *= 10; out.might *= 10; }
+      if (p.older) { out.gloom *= 1.7; out.might *= 1.7; }
       return out;
     });
     /* The Surface Clock. Bonuses from the sky apply while the player is present and never to away pay.
@@ -1130,7 +1147,7 @@
 
     function buyPerk(id) {
       var p = PERK_BY[id];
-      if (!p || perk(p.id) || S.glass < p.cost) return false;
+      if (!p || perk(p.id) || S.glass < p.cost || (p.needs && !perk(p.needs))) return false;
       S.glass -= p.cost;
       S.perks[p.id] = 1;
       say('Set in Nightglass: ' + p.name + '.');
@@ -1759,7 +1776,7 @@
           longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
         petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), slack: slackLines() > 0, litanies: S.litanyUses, soundings: S.snd.done,
         sets: { table: setDone('table'), survey: setDone('survey'), loft: setDone('loft'), lamp: setDone('lamp'), queen: setDone('queen'), bed: setDone('bed') },
-        paneLit: paneCount(S), end: S.pane.choice === 'returned' ? 2 : S.pane.choice === 'kept' ? 3 : (S.ended ? 1 : 0), currents: S.currentChoices, vowsOpen: S.unlightings >= 3 ? 1 : 0, elderBell: 0
+        paneLit: paneCount(S), end: S.pane.choice === 'returned' ? 2 : S.pane.choice === 'kept' ? 3 : (S.ended ? 1 : 0), currents: S.currentChoices, vowsOpen: S.unlightings >= 3 ? 1 : 0, elderBell: cnt('bell')
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
       D.CODEX.forEach(function (c) {
@@ -1897,6 +1914,7 @@
       for (i = 0; i < D.DENIZENS.length; i++) {
         var d = D.DENIZENS[i];
         if (cnt(d.id) > 0) continue;
+        if (!denLive(d)) break;
         var cost = denCost(d, 0, 1), eta = S.gloom >= cost ? 0 : (C.gps > 0 ? (cost - S.gloom) / C.gps : -1);
         if (eta >= 0 && eta <= 600) f.nextDen = { name: d.name, when: eta === 0 ? 'reach' : fmtTime(eta) };
         break;
@@ -1962,7 +1980,7 @@
     /* ---------- the engine ---------- */
 
     var engine = {
-      KEY: KEY, MAX_SAVE: MAX_SAVE, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, MARCH: MARCH,
+      KEY: KEY, MAX_SAVE: MAX_SAVE, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, DEEP_SHAFT: DEEP_SHAFT, denLive: denLive, MARCH: MARCH,
       C: C, UPGS: UPGS, OMENS: OMENS, dirty: dirty,
       // time
       start: start, tick: tick, step: step, away: away, slowChecks: slowChecks, recalc: recalc, fight: fight,

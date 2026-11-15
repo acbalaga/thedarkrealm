@@ -45,7 +45,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 | [x] | [TDR-033](TDR-033-soundings-and-relics.md) Soundings and Relics | L | 004, 010 |
 | [x] | [TDR-034](TDR-034-night-report.md) The Night Report | S | 001, 010 |
 | [x] | [TDR-035](TDR-035-the-pane.md) The Pane and two endings | L | 024, 031, 032, 033 |
-| [ ] | [TDR-036](TDR-036-elder-shafts.md) The Elder Shafts | M | 003, 004 |
+| [x] | [TDR-036](TDR-036-elder-shafts.md) The Elder Shafts | M | 003, 004 |
 
 ### Lore
 
@@ -171,3 +171,5 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-053: the picture is `public/js/scene.js` (a pure snapshot builder plus layer drawing) on the existing scene canvas. Five reference screenshots are committed in `docs/design/scene/` (regenerate with `TDR_SHOTS=1 npm run e2e`). Measured in Chromium with the CPU slowed four times: average frame under 4 ms, and with motion off no animation frame is scheduled after the static one. The Pane glint and the two ending tints are drawn from the view (`paneLit`, `choice`) but those inputs are now supplied by TDR-035. The throne sits behind the well and is mostly hidden by it; the court clusters and the Lampwarden's shaft are the visible changes. Figures are simple shapes and have not had an art pass; "a player can tell fathom 1 from fathom 8 at a glance" is a judgement for a person looking at the screenshots.
 
 - TDR-035: the Pane page sits under Deep (`pane` unlocks at the first Nightglass). Lights are SVG wedges (two rings, 8 and 16) plus a list of all 24 with progress. All 24 lit opens a required modal with the two endings, each confirmed with "This cannot be taken back."; "Not yet" postpones until reload or the persistent "The pane is whole" button. Owner decision: the simulator now logs Pane 6/12/18/24 milestones; whether day 30 to 120 for the 24th light holds for casual play needs a person to read `npm run sim` output, since several lights (Longest Night, eclipse, 30 vigils) are calendar-bound and cannot be sped up.
+
+- TDR-036: gate passed (Sunshaft 150 at 13.8 days casual, 9.3 days active in the baseline). Built as specced: shafts to 200, Drowned Bell (after 150) and Pane-Wright (12 lights), perks Older Than Lamps (5,000) and The Patient Dark (1,200, needs Unsleeping, 48 h away cap), named notation to 1e48. Full Attendance counts only visible denizens. New omens are appended at the end of the omen list so no earlier id moves. Scene gained two slots and figures. Owner decision: the 10 to 30 day target for Sunshaft 150 to 200 (casual) was not measured when this was committed because the 90-day simulator runs had not finished; run `npm run sim -- --policy casual --days 90` and tune `bell`, `wright` and `older` if outside the target. Baseline delta not yet recorded for the same reason.

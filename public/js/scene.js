@@ -7,9 +7,9 @@ window.TDR_SCENE = (function () {
   /* Figures for a count: 1 for a kind just bound, 2 from 25, 3 from 100. */
   function tier(n) { return n >= 100 ? 3 : n >= 25 ? 2 : n >= 1 ? 1 : 0; }
 
-  /* Where a cluster stands, as fractions of the box (x, y). Ten slots round the well, outside the 190 px circle
+  /* Where a cluster stands, as fractions of the box (x, y). Twelve slots round the well, outside the 190 px circle
      around it; later kinds stand further back. */
-  var SLOTS = [[0.14, 0.78], [0.86, 0.78], [0.24, 0.62], [0.76, 0.62], [0.12, 0.45], [0.88, 0.45], [0.2, 0.28], [0.8, 0.28], [0.34, 0.16], [0.66, 0.16]];
+  var SLOTS = [[0.14, 0.78], [0.86, 0.78], [0.24, 0.62], [0.76, 0.62], [0.12, 0.45], [0.88, 0.45], [0.2, 0.28], [0.8, 0.28], [0.34, 0.16], [0.66, 0.16], [0.07, 0.62], [0.93, 0.62]];
 
   function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
   /* Violet at the first fathom toward blue-black at the twelfth: [mid stop, edge stop]. */
@@ -44,7 +44,9 @@ window.TDR_SCENE = (function () {
     tide: function (c, x, y, s) { c.beginPath(); c.arc(x, y, 7 * s, 0.1 * Math.PI, 0.9 * Math.PI); c.stroke(); },
     choir: function (c, x, y, s) { for (var i = -2; i <= 2; i++) { c.beginPath(); c.arc(x + i * 4 * s, y + Math.abs(i), 1.6 * s, 0, 6.3); c.fill(); } },
     orchard: function (c, x, y, s) { c.fillRect(x - 1 * s, y, 2 * s, 8 * s); c.beginPath(); c.arc(x, y - 2 * s, 5 * s, 0, 6.3); c.fill(); },
-    sleeper: function (c, x, y, s) { c.beginPath(); c.ellipse(x, y, 9 * s, 4 * s, 0, 0, 6.3); c.fill(); }
+    sleeper: function (c, x, y, s) { c.beginPath(); c.ellipse(x, y, 9 * s, 4 * s, 0, 0, 6.3); c.fill(); },
+    bell: function (c, x, y, s) { c.beginPath(); c.moveTo(x - 5 * s, y + 6 * s); c.lineTo(x - 3 * s, y - 4 * s); c.lineTo(x + 3 * s, y - 4 * s); c.lineTo(x + 5 * s, y + 6 * s); c.closePath(); c.fill(); },
+    wright: function (c, x, y, s) { c.beginPath(); c.moveTo(x, y - 6 * s); c.lineTo(x + 5 * s, y); c.lineTo(x, y + 6 * s); c.lineTo(x - 5 * s, y); c.closePath(); c.fill(); }
   };
 
   /* One frame. t is seconds. fade: { kindId: 0..1 } for kinds that have just appeared. */
