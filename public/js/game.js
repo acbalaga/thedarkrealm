@@ -2,8 +2,8 @@
 (function () {
   'use strict';
 
-  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create(), TOASTQ = window.TDR_TOAST.createQueue(5);
-  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; delete window.TDR_TOAST; } catch (e) {}   // keep the tables and the rules out of console reach
+  var D = window.TDR_DATA, CORE = window.TDR_CORE, NAVM = window.TDR_NAV.create(), TOASTQ = window.TDR_TOAST.createQueue(5), SOUND = window.TDR_SOUND.create();
+  try { delete window.TDR_DATA; delete window.TDR_CORE; delete window.TDR_NAV; delete window.TDR_TOAST; delete window.TDR_SOUND; } catch (e) {}   // keep the tables and the rules out of console reach
   var CLICK_CAP = 14;       // hand gathers accepted per second
   var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
   try { delete window.TDR_VERSION; } catch (e) {}
@@ -162,6 +162,11 @@
 
   /* What the rules noticed becomes a toast. */
   function onEvent(ev) {
+    if (ev.type === 'omen') SOUND.play('omen');
+    else if (ev.type === 'boss') SOUND.play('seal');
+    else if (ev.type === 'fail') SOUND.play('fail');
+    else if (ev.type === 'codex') SOUND.play('page');
+    else if (ev.type !== 'fail') SOUND.play('toast');
     if (ev.type === 'omen') toast({ kind: 'omen', title: 'Omen', text: ev.name + ' · +1% Gloom', go: { dest: 'ledger', page: 'omen' } });
     else if (ev.type === 'codex') toast({ kind: 'codex', title: 'Codex', text: ev.title, go: { dest: 'ledger', page: 'codex' } });
     else if (ev.type === 'unlock') toast({ kind: 'unlock', title: 'Unlocked', text: ev.what, go: ev.go });
@@ -461,7 +466,7 @@
       var bl = el('span', 'buy-label', 'Bind');
       var bc = el('span', 'buy-cost', '');
       btn.appendChild(bl); btn.appendChild(bc);
-      btn.onclick = function () { engine.buyDenizen(d.id); buyAgain(); };
+      btn.onclick = function () { if (engine.buyDenizen(d.id)) SOUND.play('bind'); buyAgain(); };
       row.appendChild(glyph); row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
       return { d: d, i: i, row: row, count: count, info: info, btn: btn, bl: bl, bc: bc, tog: tog, tcb: tcb };
@@ -515,7 +520,7 @@
         b.appendChild(el('span', 'card-desc', u.desc));
         var c = el('span', 'card-cost', '');
         b.appendChild(c);
-        b.onclick = function () { engine.buyUpg(u.id); buyAgain(); };
+        b.onclick = function () { if (engine.buyUpg(u.id)) SOUND.play('working'); buyAgain(); };
         grid.appendChild(b);
         return { u: u, b: b, c: c };
       });
@@ -644,7 +649,7 @@
       var btn = el('button', 'btn buy echo'); btn.type = 'button';
       var bl = el('span', 'buy-label', 'Perform'); var bc = el('span', 'buy-cost');
       btn.appendChild(bl); btn.appendChild(bc);
-      btn.onclick = function () { var k = riteK(r); engine.buyRite(r.id, k); buyAgain(); };
+      btn.onclick = function () { var k = riteK(r); if (engine.buyRite(r.id, k)) SOUND.play('rite'); buyAgain(); };
       row.appendChild(mid); row.appendChild(btn);
       page.appendChild(row);
       return { r: r, lvl: lvl, btn: btn, bc: bc, bl: bl, tog: tog, tcb: tcb };
@@ -688,7 +693,7 @@
       modal('Let the realm go?', [
         h('p', null, ['Vesperdeep will sink a fathom. You will begin again in a shallow Stillwell, carrying ', h('b', null, fmt(g)), ' new Nightglass.']),
         h('p', { className: 'dim' }, 'Each Nightglass ever earned gives +5% Gloom and Might, for good.')],
-        [{ label: 'Not yet' }, { label: 'Let go', primary: true, cb: function () { engine.unlight(); render(); } }]);
+        [{ label: 'Not yet' }, { label: 'Let go', primary: true, cb: function () { engine.unlight(); SOUND.play('unlight'); render(); } }]);
     };
     box.appendChild(gainEl); box.appendChild(advEl); box.appendChild(thisEl); box.appendChild(lastEl); box.appendChild(nextEl); box.appendChild(btn);
     page.appendChild(box);
@@ -703,7 +708,7 @@
       b.appendChild(el('span', 'card-desc', p.desc));
       var c = el('span', 'card-cost');
       b.appendChild(c);
-      b.onclick = function () { engine.buyPerk(p.id); buyAgain(); };
+      b.onclick = function () { if (engine.buyPerk(p.id)) SOUND.play('working'); buyAgain(); };
       grid.appendChild(b);
       return { p: p, b: b, c: c };
     });
@@ -911,6 +916,9 @@
   }
 
   /* Realm (stats and settings) */
+  function applySound() {
+    SOUND.setVolume(S.opts.vol / 100); SOUND.setAmbience(S.opts.amb); SOUND.setCues(S.opts.sfx); SOUND.setHaptic(S.opts.haptic);
+  }
   function isInstalled() {
     try { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; } catch (e) { return false; }
   }
@@ -1078,6 +1086,21 @@
       bakAges.forEach(function (x) { x.node.textContent = fmtTime(Math.max(0, (now - x.at) / 1000)) + ' ago'; });
     }
 
+    page.appendChild(el('h3', 'sub-head', 'Sound'));
+    var volRow = el('label', 'check'), vol = document.createElement('input'); vol.type = 'range'; vol.min = '0'; vol.max = '100'; vol.step = '5';
+    vol.setAttribute('aria-label', 'Master volume');
+    vol.onchange = function () { S.opts.vol = Number(vol.value); applySound(); };
+    volRow.appendChild(document.createTextNode('Volume ')); volRow.appendChild(vol);
+    page.appendChild(volRow);
+    function sw(label, key) {
+      var l = el('label', 'check'), c = document.createElement('input'); c.type = 'checkbox';
+      c.onchange = function () { S.opts[key] = c.checked; applySound(); };
+      l.appendChild(c); l.appendChild(document.createTextNode(' ' + label));
+      page.appendChild(l);
+      return { l: l, c: c, key: key };
+    }
+    var swA = sw('Ambience', 'amb'), swC = sw('Cues', 'sfx'), swH = sw('Vibration', 'haptic');
+    swH.l.hidden = !SOUND.vibrate;
     page.appendChild(el('h3', 'sub-head', 'Display'));
     var o1 = el('label', 'check'); var c1 = document.createElement('input'); c1.type = 'checkbox';
     o1.appendChild(c1); o1.appendChild(document.createTextNode(' Scientific notation for large numbers'));
@@ -1104,6 +1127,7 @@
 
     return function () {
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
+      vol.value = String(S.opts.vol); swA.c.checked = S.opts.amb; swC.c.checked = S.opts.sfx; swH.c.checked = S.opts.haptic;
       c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys; c4.checked = S.opts.chatter;
       upBtn.hidden = !waitingWorker;
       refreshBackups();
@@ -1165,6 +1189,7 @@
     paintObjective();
     paintSky();
     paintVow();
+    SOUND.setDepth(S.unlightings + 1); SOUND.duck(S.buffs.hush > 0);
     paintPetition();
     updateLitanies(); litanyChips();
     var rh = $('return-hint');
@@ -1214,7 +1239,7 @@
       b.appendChild(cool); b.appendChild(g);
       b.title = l.desc;
       guardRepeat(b);
-      b.addEventListener('click', function (ev) { if (engine.speakLitany(l.id, !!ev && ev.isTrusted === true)) render(); });
+      b.addEventListener('click', function (ev) { if (engine.speakLitany(l.id, !!ev && ev.isTrusted === true)) { SOUND.play('litany'); render(); } });
       host.appendChild(b);
       return { l: l, b: b, cool: cool };
     });
@@ -1302,7 +1327,7 @@
       b.appendChild(el('span', 'pet-text', c.name + '. ' + c.line));
       b.appendChild(el('span', 'pet-effect', 'Boon: ' + c.boon));
       b.appendChild(el('span', 'pet-effect', 'Bane: ' + c.bane));
-      b.onclick = function () { nextModal(); if (S.unlightings >= 3) chooseVow(c.id, g); else { engine.unlight(c.id); render(); } };
+      b.onclick = function () { nextModal(); if (S.unlightings >= 3) chooseVow(c.id, g); else { engine.unlight(c.id); SOUND.play('unlight'); render(); } };
       return b;
     });
     modal('Three currents', [h('p', null, ['Vesperdeep will sink a fathom. You will carry ', h('b', null, fmt(g)), ' new Nightglass. Choose the grain of the next fathom.']),
@@ -1316,11 +1341,11 @@
       b.appendChild(el('span', 'pet-text', v.name + '. ' + v.line));
       b.appendChild(el('span', 'pet-effect', 'Rule: ' + v.rule));
       b.appendChild(el('span', 'pet-effect', 'Kept by sealing Sunshaft ' + v.goal + '. ' + (S.keepings[v.id] ? 'Kept already: it pays nothing further.' : v.keeping + ': ' + v.keepText)));
-      b.onclick = function () { nextModal(); engine.unlight(currentId, v.id); render(); };
+      b.onclick = function () { nextModal(); engine.unlight(currentId, v.id); SOUND.play('unlight'); render(); };
       return b;
     });
     var none = el('button', 'btn current', 'No vow'); none.type = 'button';
-    none.onclick = function () { nextModal(); engine.unlight(currentId); render(); };
+    none.onclick = function () { nextModal(); engine.unlight(currentId); SOUND.play('unlight'); render(); };
     modal('Take a vow for this fathom?', [h('p', null, 'A thing given up on the way down is waiting, heavier, at the bottom. You may set it down at any time and owe nothing.'),
       h('div', { className: 'waiting' }, opts.concat([none]))], [{ label: 'Not yet' }], { required: true });
   }
@@ -1586,7 +1611,7 @@
     var t = ev.target;
     if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     var lit = { '1': 'teeth', '2': 'breath', '3': 'undertow' }[ev.key];
-    if (lit) { if (!ev.repeat && engine.speakLitany(lit, ev.isTrusted === true)) { ev.preventDefault(); render(); } return; }
+    if (lit) { if (!ev.repeat && engine.speakLitany(lit, ev.isTrusted === true)) { SOUND.play('litany'); ev.preventDefault(); render(); } return; }
     var id = KEY_DEST[(ev.key || '').toLowerCase()];
     if (!id) return;
     var d = NAVM.dest(id);
@@ -1624,6 +1649,7 @@
     if (!clickAllowed(ev)) return;
     var amount = engine.gather(true);
     if (!amount) return;
+    SOUND.play('gather');
     if (ev && ev.currentTarget && ev.currentTarget.id === 'strip-well') {
       floatGain(amount, ev, $('strip'), $('strip-well'), $('strip-floaters'), 'floater small');
     } else {
@@ -1644,7 +1670,7 @@
       var node = i === 0 ? first : first.cloneNode(true);
       if (i > 0) { node.removeAttribute('id'); node.hidden = true; box.insertBefore(node, first.nextSibling); }
       node.addEventListener('click', (function (slot) { return function (ev) {
-        if (slot.id && engine.snuffLantern(!!ev && ev.isTrusted === true, slot.id)) render();
+        if (slot.id && engine.snuffLantern(!!ev && ev.isTrusted === true, slot.id)) { SOUND.play('snuff'); render(); }
       }; })(lanternSlots[i] = { node: node, id: 0, w: -1, path: 'ltr', hang: 0.4 }));
       guardRepeat(node);
     }
@@ -1689,6 +1715,7 @@
         sl.node.classList.add('path-' + sl.path);
       }
     });
+    if (fresh) SOUND.play('lantern');
     if (fresh) live(vis.length > 1 ? 'A procession of lanterns is passing.' : 'A lantern is passing.');
     $('snuff').hidden = !vis.length || box.clientWidth === 0;
     var sc = $('streak-chip');
@@ -1821,10 +1848,17 @@
     });
     guardRepeat($('snuff'));
     $('snuff').addEventListener('click', function (ev) {
-      if (engine.snuffLantern(!!ev && ev.isTrusted === true)) render();
+      if (engine.snuffLantern(!!ev && ev.isTrusted === true)) { SOUND.play('snuff'); render(); }
     });
     buildLanterns();
     buildLitanies($('litanies'));
+    applySound();
+    function gesture(ev) {
+      if (!ev.isTrusted) return;
+      SOUND.init(); applySound();
+      document.removeEventListener('pointerdown', gesture, true); document.removeEventListener('keydown', gesture, true);
+    }
+    document.addEventListener('pointerdown', gesture, true); document.addEventListener('keydown', gesture, true);
     document.addEventListener('keydown', trapFocus);
     document.addEventListener('keydown', onKey);
     guardRepeat($('strip-well'));
@@ -1856,7 +1890,7 @@
     setInterval(function () { if (!wiping && !engine.halted) saveLog(); }, 15000);
     window.addEventListener('beforeunload', keep);
     window.addEventListener('pagehide', keep);            // the reliable one on phones and Home Screen apps
-    document.addEventListener('visibilitychange', function () { if (document.hidden) keep(); else frame(); });
+    document.addEventListener('visibilitychange', function () { SOUND.setHidden(document.hidden); if (document.hidden) keep(); else frame(); });
     /* A second window on the same save would overwrite this one and double the away credit. */
     window.addEventListener('storage', function (e) {
       var act = engine.storageAction(e.key, e.newValue);
