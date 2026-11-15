@@ -860,7 +860,9 @@
       S.march = MARCH;
     }
 
+    var lastHeld = null;       // the Lampwarden that most recently turned the Host back, for the Night Report
     function failBoss() {
+      lastHeld = { n: S.shaft, name: shaftName(S.shaft) };
       say(shaftName(S.shaft) + ' holds the shaft. The Host falls back to regroup.');
       S.autoAdvance = false;
       S.regroup = true;
@@ -1022,7 +1024,9 @@
 
     /* Credits time the page was not running. Returns a plain report, or null when there is
        nothing to tell. bestShaft is the new deepest seal, or 0 when it did not move. */
-    function away(sec) {
+    /* kind: 'absence' (the page was not running) or 'throttle' (the page ran slowly in the background).
+       A throttled tab keeps any lantern boons running down instead of clearing them. */
+    function away(sec, kind) {
       if (S.debt > 0) {
         var pay = Math.min(sec, S.debt);
         S.debt -= pay; sec -= pay;
@@ -1031,25 +1035,28 @@
       var capH = awayCapHours();
       var t = Math.min(sec, capH * 3600);
       if (sec >= 600) { S.lanternIn = Math.min(S.lanternIn, 8); welcomeLantern = true; }
-      var eff = awayPace();
+      var eff = awayPace(), kept = { h: S.buffs.hush, t: S.buffs.teeth };
       S.buffs.hush = 0; S.buffs.teeth = 0;
       recalc({ present: false, wall: wallNow() });
       var g = C.gps * t * eff, e0 = S.echoesTotal, s0 = S.bestShaft;
+      lastHeld = null;
       gain(g);
       fight(t * eff);
       S.played += t; S.runTime += t;
+      if (kind === 'throttle') { S.buffs.hush = Math.max(0, kept.h - t); S.buffs.teeth = Math.max(0, kept.t - t); }
       recalc();
       if (g <= 0 && S.echoesTotal === e0) return null;
       return {
-        sec: sec, credited: t, pace: eff, capHours: capH, gloom: g,
-        echoes: S.echoesTotal - e0, bestShaft: S.bestShaft > s0 ? S.bestShaft : 0
+        sec: sec, credited: t, pace: eff, capHours: capH, gloom: g, capped: sec > t,
+        echoes: S.echoesTotal - e0, bestShaft: S.bestShaft > s0 ? S.bestShaft : 0,
+        held: lastHeld ? { n: lastHeld.n, name: lastHeld.name } : null
       };
     }
 
     function mergeAway(a, b) {
       return {
-        sec: a.sec + b.sec, credited: a.credited + b.credited, pace: b.pace, capHours: b.capHours,
-        gloom: a.gloom + b.gloom, echoes: a.echoes + b.echoes, bestShaft: Math.max(a.bestShaft, b.bestShaft)
+        sec: a.sec + b.sec, credited: a.credited + b.credited, pace: b.pace, capHours: b.capHours, capped: a.capped || b.capped,
+        gloom: a.gloom + b.gloom, echoes: a.echoes + b.echoes, bestShaft: Math.max(a.bestShaft, b.bestShaft), held: b.held || a.held
       };
     }
 
@@ -1062,7 +1069,7 @@
 
     function tick() {
       if (halted) return { away: null, ending: false };
-      var w = wallNow(), m = monoNow(), rep = null, more;
+      var w = wallNow(), m = monoNow(), rep = null, thr = null, abs = null;
       var dm = Math.max(0, (m - monoLast) / 1000);
       monoLast = m;
       if (w < S.seen - 120000) {
@@ -1073,8 +1080,15 @@
         say('The realm\'s clocks disagree. Time away will not count until they settle.');
       }
       var gap = Math.max(0, (w - S.seen) / 1000) - dm;
-      if (dm > 90) rep = away(dm); else step(dm);
-      if (gap > 60) { more = away(gap); rep = rep && more ? mergeAway(rep, more) : (rep || more); }
+      if (dm > 90) thr = away(dm, 'throttle'); else step(dm);
+      if (gap > 60) abs = away(gap, 'absence');
+      // A report is for an absence of five minutes or more. A throttled tab and shorter gaps are credited
+      // with one Whisper, so nothing interrupts the player who is here.
+      if (abs && abs.sec >= 300) rep = thr ? mergeAway(thr, abs) : abs;
+      else {
+        var q = thr && abs ? mergeAway(thr, abs) : (thr || abs);
+        if (q) say('The realm kept working. ' + fmtTime(q.sec) + '.');
+      }
       S.seen = Math.max(S.seen, w);
       slowTimer += dm; saveTimer += dm;
       if (slowTimer >= 0.5) { slowTimer = 0; slowChecks(); }
@@ -1145,6 +1159,25 @@
     function markAllCodexRead() { S.codexNew = {}; }
     /* Pages in live systems only: the ones the player could know about. */
     function codexLive() { return D.CODEX.filter(function (c) { return D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0; }); }
+
+    /* ---------- the Night Report ---------- */
+
+    /* What is waiting for the player on return. Each provider gives { id, text, go } or null.
+       Later systems append here (offers, a slack line, the sky). */
+    var WAITING = [
+      function () {
+        var n = availableUpgs().filter(function (u) { return S.gloom >= u.cost; }).length;
+        return n ? { id: 'working', text: n + (n === 1 ? ' working can be completed.' : ' workings can be completed.'), go: { dest: 'realm', page: 'work' } } : null;
+      },
+      function () { return facts().unlight ? { id: 'unlight', text: 'The realm is heavy enough to let go.', go: { dest: 'deep', page: 'unl' } } : null; }
+    ];
+    function waiting() {
+      var out = [];
+      WAITING.forEach(function (fn) { var w = fn(); if (w) out.push(w); });
+      return out;
+    }
+    /* When the realm stops working if the player leaves at nowMs. */
+    function returnAt(nowMs) { return nowMs + awayCapHours() * 3600000; }
 
     /* ---------- what to do next ---------- */
 
@@ -1246,6 +1279,7 @@
       // modifiers and seeded randomness
       addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
       codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
+      waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,
       facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
       rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },
       pick: pick, shuffle: shuffle, weighted: weighted,

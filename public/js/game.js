@@ -223,8 +223,10 @@
   /* body: a node or an array of nodes, built with h(). opts.required: a choice the player has to make, so
      Escape and the backdrop do not close it. */
   function modal(title, body, btns, opts) {
-    modalQueue.push({ title: title, body: body, btns: btns || [{ label: 'Close', primary: true }], required: !!(opts && opts.required) });
+    var entry = { title: title, body: body, btns: btns || [{ label: 'Close', primary: true }], required: !!(opts && opts.required) };
+    modalQueue.push(entry);
     if (!modalOpen) nextModal();
+    return entry;
   }
 
   /* While a dialog is open the page behind it is inert (aria-hidden where inert is not supported). */
@@ -1049,6 +1051,12 @@
     setBuff('teeth', 'Bared Teeth', S.buffs.teeth);
     $('well-hint').hidden = S.clicks >= 15;
     paintObjective();
+    var rh = $('return-hint');
+    if (rh && affordNow) {
+      var rt2 = new Date(engine.returnAt(wallNow())).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var txt = 'If you leave now, the realm works until ' + rt2 + '.';
+      if (rh.textContent !== txt) rh.textContent = txt;
+    }
     syncLantern();
     var title = fmt(S.gloom) + ' Gloom · The Dark Realm', tnow = wallNow();
     if (document.title !== title && tnow - titleAt > 10000) { document.title = title; titleAt = tnow; }
@@ -1242,15 +1250,47 @@
 
   var echoMeter = engine.rateMeter(60), meterAt = 0;
 
-  function showAway(r) {
+  /* The Night Report. Built from plain data with nodes only. Reports that arrive before it is dismissed are
+     merged into it in place, so there is never a queue of them. */
+  var reportEntry = null, reportData = null, reportLine = null;
+  function reportBody(r) {
+    var out = [];
+    out.push(h('p', null, ['Away ', h('b', null, fmtTime(r.sec)), '. The realm worked ' +
+      (r.capped ? 'for the first ' + r.capHours + 'h, ' : '') + 'at ' + Math.round(r.pace * 100) + '% of its pace.']));
+    if (r.pace < 1 && rl('sleep') < 5) out.push(h('p', { className: 'dim small' }, 'Rite of the Long Sleep raises the pace.'));
     var items = [h('li', null, [h('b', null, fmt(r.gloom)), ' Gloom gathered'])];
     if (r.echoes > 0) items.push(h('li', null, [h('b', null, fmt(r.echoes)), ' Echoes recovered']));
     if (r.bestShaft > 0) items.push(h('li', null, ['Sunshafts sealed down to ', h('b', null, String(r.bestShaft))]));
-    modal('While the realm slept', [
-      h('p', null, ['You were away for ', h('b', null, fmtTime(r.sec)), '. The realm kept working at ' + Math.round(r.pace * 100) +
-        '% of its pace' + (r.sec > r.credited ? ', for the first ' + r.capHours + ' hours' : '') + '.']),
-      h('ul', { className: 'away' }, items)],
-      [{ label: 'Take the seat', primary: true }]);
+    if (r.held) items.push(h('li', null, [r.held.name + ' held Sunshaft ' + r.held.n + '. The Host is regrouping.']));
+    out.push(h('ul', { className: 'away' }, items));
+    var w = engine.waiting();
+    if (w.length) {
+      out.push(h('h3', { className: 'sub-head' }, 'Waiting'));
+      var box = h('div', { className: 'waiting' });
+      w.forEach(function (x) {
+        var b = el('button', 'btn', x.text);
+        b.type = 'button';
+        b.onclick = function () { nextModal(); goDest(x.go.dest, x.go.page); };
+        box.appendChild(b);
+      });
+      out.push(box);
+    }
+    if (reportLine) out.push(h('p', { className: 'dim chatter-line' }, reportLine));
+    if (r.capped) out.push(h('p', { className: 'dim small' }, 'The realm stops working after ' + r.capHours + ' hours alone.' + (r.capHours < 24 ? ' The Unsleeping setting in Nightglass makes that 24.' : '')));
+    return out;
+  }
+  function showAway(r) {
+    var open = reportEntry && (modalCur === reportEntry || modalQueue.indexOf(reportEntry) >= 0);
+    if (open) {
+      reportData = engine.mergeAway(reportData, r);
+      reportEntry.body = reportBody(reportData);
+      if (modalCur === reportEntry) $('modal-body').replaceChildren.apply($('modal-body'), reportEntry.body);
+      return;
+    }
+    reportData = r;
+    var p = S.opts.chatter ? engine.pickChatter() : null;
+    reportLine = p ? p.line : null;
+    reportEntry = modal('While the realm slept', reportBody(r), [{ label: 'Take the seat', primary: true }]);
   }
 
   function frame() {
