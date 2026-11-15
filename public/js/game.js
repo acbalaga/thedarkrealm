@@ -352,6 +352,8 @@
   }
 
   function goDest(id, pageId) {
+    // Tapping the Ledger while it has unread Codex pages lands on the Codex, one tap from the badge.
+    if (id === 'ledger' && !pageId && S.nav.dest !== 'ledger' && engine.codexUnread() > 0) pageId = 'codex';
     S.nav.dest = id;
     if (pageId) S.nav.page[id] = pageId;
     applyNav();
@@ -402,7 +404,6 @@
       sub.setAttribute('role', 'tablist');
       sub.setAttribute('aria-label', d.label + ' pages');
     }
-    if (p.id === 'codex') S.codexUnread = 0;
   }
 
   function viewing(pageId) { return !!cur && cur.page.id === pageId; }
@@ -720,25 +721,81 @@
 
   /* Codex */
   function buildCodex(page) {
-    page.appendChild(el('p', 'lede', 'What you have pieced together about Vesperdeep, in the order you learned it.'));
+    page.appendChild(el('p', 'lede', 'What you have pieced together about Vesperdeep.'));
+    var bar = el('div', 'page-head codex-bar');
+    var modes = el('div', 'seg');
+    modes.setAttribute('role', 'radiogroup');
+    modes.setAttribute('aria-label', 'Order of pages');
+    var view = 'subject', views = [];
+    [['subject', 'By subject'], ['learned', 'As learned']].forEach(function (v) {
+      var b = el('button', 'seg-btn', v[1]);
+      b.type = 'button'; b.setAttribute('role', 'radio');
+      b.onclick = function () { view = v[0]; engine.dirty.codex = true; };
+      modes.appendChild(b);
+      views.push({ id: v[0], b: b });
+    });
+    rovingKeys(modes, '.seg-btn', function (n) { n.click(); });
+    var readAll = el('button', 'btn', 'Mark all read');
+    readAll.type = 'button';
+    readAll.onclick = function () { engine.markAllCodexRead(); engine.dirty.codex = true; render(); };
+    bar.appendChild(modes); bar.appendChild(readAll);
+    page.appendChild(bar);
     var list = el('div', 'codex');
     page.appendChild(list);
     var left = el('p', 'dim small');
     page.appendChild(left);
+
+    /* One page: a native details element. New pages start open, with a dot and a word for screen readers.
+       Pressing the title (to open or close it) counts as reading it. */
+    var openState = {};
+    function entry(c) {
+      var fresh = !!S.codexNew[c.id];
+      var d = document.createElement('details');
+      d.className = 'entry' + (fresh ? ' new' : '');
+      d.open = openState[c.id] !== undefined ? openState[c.id] : fresh;
+      var sum = el('summary', null, c.title);
+      if (fresh) {
+        sum.appendChild(el('span', 'new-dot'));
+        sum.appendChild(el('span', 'sr-only', ' new'));
+      }
+      sum.onclick = function () {
+        openState[c.id] = !d.open;
+        if (S.codexNew[c.id]) { engine.markCodexRead(c.id); d.classList.remove('new'); var dot = sum.querySelector('.new-dot, .sr-only'); while (dot) { sum.removeChild(dot); dot = sum.querySelector('.new-dot, .sr-only'); } render(); }
+      };
+      d.appendChild(sum);
+      d.appendChild(el('p', null, c.text));
+      return d;
+    }
+
     return function () {
+      views.forEach(function (v) { v.b.classList.toggle('on', v.id === view); v.b.setAttribute('aria-checked', v.id === view ? 'true' : 'false'); v.b.tabIndex = v.id === view ? 0 : -1; });
+      readAll.hidden = engine.codexUnread() === 0;
       if (!engine.dirty.codex) return;
       engine.dirty.codex = false;
       list.replaceChildren();
-      var n = 0;
-      D.CODEX.forEach(function (c) {
-        if (!S.codex[c.id]) return;
-        n++;
-        var a = el('article', 'entry');
-        a.appendChild(el('h3', null, c.title));
-        a.appendChild(el('p', null, c.text));
-        list.appendChild(a);
-      });
-      left.textContent = n < D.CODEX.length ? (D.CODEX.length - n) + ' pages are still dark.' : 'The codex is complete.';
+      var live = engine.codexLive(), got = 0;
+      live.forEach(function (c) { if (S.codex[c.id]) got++; });
+      if (view === 'learned') {
+        D.CODEX.map(function (c, i) { return { c: c, i: i }; })
+          .filter(function (x) { return S.codex[x.c.id]; })
+          .sort(function (a, b) { return S.codex[b.c.id] - S.codex[a.c.id] || a.i - b.i; })
+          .forEach(function (x) { list.appendChild(entry(x.c)); });
+      } else {
+        D.CODEX_CATS.forEach(function (cat) {
+          var inCat = D.CODEX.filter(function (c) { return c.cat === cat.id; });
+          var have = inCat.filter(function (c) { return S.codex[c.id]; });
+          if (!have.length) return;
+          var dark = inCat.filter(function (c) { return !S.codex[c.id] && D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0; }).length;
+          var sec = document.createElement('details');
+          sec.className = 'codex-cat';
+          sec.open = true;
+          sec.appendChild(el('summary', 'sub-head', cat.title + ' \u00b7 ' + have.length + ' of ' + (have.length + dark)));
+          have.sort(function (a, b) { return D.CODEX.indexOf(a) - D.CODEX.indexOf(b); }).forEach(function (c) { sec.appendChild(entry(c)); });
+          if (dark > 0) sec.appendChild(el('p', 'dim small', dark + (dark === 1 ? ' page is' : ' pages are') + ' still dark.'));
+          list.appendChild(sec);
+        });
+      }
+      left.textContent = got < live.length ? (live.length - got) + (live.length - got === 1 ? ' page is' : ' pages are') + ' still dark.' : 'The codex is complete.';
     };
   }
 
@@ -977,7 +1034,7 @@
     var canWork = !viewing('work') && UPGS.some(function (u) { return !S.upg[u.id] && S.gloom >= u.cost && u.show(); });
     var unlReady = !viewing('unl') && S.unlightings === 0 && glassGain() >= 1;
     badge('realm', canWork);
-    badge('ledger', S.codexUnread > 0 || (!viewing('set') && !!waitingWorker));
+    badge('ledger', engine.codexUnread() > 0 || (!viewing('set') && !!waitingWorker));
     badge('deep', unlReady);
     // The one gold badge: a lantern is passing while the player is somewhere that cannot show it.
     barBtns.seat.classList.toggle('has-dot', !!engine.lantern && cur.dest.id !== 'seat');
@@ -1218,7 +1275,7 @@
     });
     var isNew = S.totalGloom === 0 && S.clicks === 0;
     engine.slowChecks();
-    S.codexUnread = isNew ? 1 : S.codexUnread;
+    if (isNew) S.codexNew.waking = 1;
     say(isNew ? 'You wake on the floor of a throne room. The seat is empty. The Stillwell is at your feet.' : 'The seat is as you left it.');
     if (loaded.note) say(loaded.note);
     applyNav();

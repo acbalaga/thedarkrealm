@@ -90,7 +90,8 @@
         echoes: 0, echoesTotal: 0, runEchoes: 0, ritesKept: {},
         glass: 0, glassTotal: 0, unlightings: 0,
         den: {}, upg: {}, rites: {}, perks: {}, omens: {}, codex: {},
-        codexUnread: 0,
+        codexSeq: 0,          // how many pages have ever been unlocked: each page stores the number it got
+        codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
         clicks: 0, lanterns: 0, played: 0, runTime: 0,
@@ -149,8 +150,12 @@
       }
       D.PERKS.forEach(function (p) { if (flag(o.perks, p.id)) s.perks[p.id] = 1; });
       OMENS.forEach(function (m) { if (flag(o.omens, m.id)) s.omens[m.id] = 1; });
-      D.CODEX.forEach(function (c) { if (flag(o.codex, c.id)) s.codex[c.id] = 1; });
-      s.codexUnread = int(o, 'codexUnread', 0, 99, 0);
+      // codex[id] is the order the page was learned in. A save from before that held 1 for every page:
+      // ties keep table order, and pages unlocked from here on number above the highest found.
+      var seqMax = 0;
+      D.CODEX.forEach(function (c) { var n = int(o.codex, c.id, 0, 9999, 0); if (n) { s.codex[c.id] = n; if (n > seqMax) seqMax = n; } });
+      s.codexSeq = Math.max(seqMax, int(o, 'codexSeq', 0, 9999, 0));
+      D.CODEX.forEach(function (c) { if (s.codex[c.id] && flag(o.codexNew, c.id)) s.codexNew[c.id] = 1; });
       s.bestShaft = int(o, 'bestShaft', 0, 1e5, 0);
       s.shaftTop = int(o, 'shaftTop', 1, s.bestShaft + 1, 1);
       s.shaft = int(o, 'shaft', 1, s.shaftTop, 1);
@@ -1071,17 +1076,28 @@
 
       var f = {
         total: S.totalGloom, denizens: totalDenizens(), den: {}, lanterns: S.lanterns, shaftsOpen: u.shafts,
-        echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal
+        echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal,
+        // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
+        skyOpen: 0, sky: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0, eclipse: 0 },
+        petitions: 0, vigils: 0, litanies: 0, soundings: 0,
+        sets: { table: 0, survey: 0, loft: 0, lamp: 0, queen: 0, bed: 0 },
+        currents: 0, vowsOpen: 0, paneLit: 0, end: S.ended ? 1 : 0, elderBell: 0
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
       D.CODEX.forEach(function (c) {
-        if (!S.codex[c.id] && c.when(f)) {
-          S.codex[c.id] = 1; dirty.codex = true;
-          if (!(S.nav.dest === 'ledger' && S.nav.page.ledger === 'codex')) S.codexUnread++;
+        if (!S.codex[c.id] && D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0 && c.when(f)) {
+          S.codexSeq++; S.codex[c.id] = S.codexSeq; S.codexNew[c.id] = 1; dirty.codex = true;
           if (c.id !== 'waking') { say('Codex: ' + c.title + '.'); emit('codex', { id: c.id, title: c.title }); }
         }
       });
     }
+
+    /* ---------- the codex ---------- */
+    function codexUnread() { var n = 0; for (var k in S.codexNew) n++; return n; }
+    function markCodexRead(id) { delete S.codexNew[id]; }
+    function markAllCodexRead() { S.codexNew = {}; }
+    /* Pages in live systems only: the ones the player could know about. */
+    function codexLive() { return D.CODEX.filter(function (c) { return D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0; }); }
 
     /* ---------- what to do next ---------- */
 
@@ -1182,6 +1198,7 @@
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
       // modifiers and seeded randomness
       addSource: addSource, mods: mods, breakdown: breakdown,
+      codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
       facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
       rng: function (label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); },
       pick: pick, shuffle: shuffle, weighted: weighted,

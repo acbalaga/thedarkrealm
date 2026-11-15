@@ -51,7 +51,7 @@ Sizes: **S** under half a session, **M** one session, **L** one long session (sp
 
 | Done | Ticket | Size | Depends on |
 | --- | --- | --- | --- |
-| [ ] | [TDR-040](TDR-040-codex-v2.md) Codex: learned order, categories, new pages | S | 001 |
+| [x] | [TDR-040](TDR-040-codex-v2.md) Codex: learned order, categories, new pages | S | 001 |
 | [ ] | [TDR-041](TDR-041-court-chatter.md) Court chatter and persistent Whispers | S | 001 |
 
 ### UI and UX
@@ -146,3 +146,5 @@ Use this section for anything a session discovers that needs the owner's decisio
 - TDR-051: the toast queue is `public/js/toast.js` (pure, unit-tested) and the objective, ETA, event and breakdown logic lives in `core.js` (tested). The rules raise events (`engine.drainEvents()`) and the interface turns them into toasts; the rules already write their own Whisper for each, so those toasts do not write a second one. Items 2 and 3 of the objective table (offers, slack lines) are omitted until TDR-032 and TDR-033 add entries to `OBJECTIVES` in `data.js`.
 - TDR-051: the Why popover for Gloom is a transparent button over the Gloom tile (so it is a 44 px target on phones); the one for Might is a button on the Sunshafts page. The Gloom list names sources by label: Nightglass, Omens, Rites, Workings, Nightglass perks, Lantern boon. Surface Clock and Petition sources will appear there on their own once they register as modifier sources.
 - TDR-051: Echo income for the "in 3m 20s" line is a rolling 60 second average sampled once a second while the page is running; it resets after an away credit or any gap over 5 seconds. Update rate for the underlines and times is capped at twice a second. The full suite of 30 browser tests passed once; one objective test is timing sensitive under load (fixed to retry its clicks).
+- TDR-040: all 24 pages from the lore bible are in `data.js` now, each with a `sys`. `LIVE_SYSTEMS` is `['core']`, so only the 25 original pages can unlock and count. Each later ticket adds its system name to that list (`sky`, `petitions`, `litanies`, `soundings`, `currents`, `vows`, `pane`, `elder`) and fills in the matching field of the facts object in `slowChecks()`. The Court pages sit in the `realm` category, as the ticket says. A hash of the original 25 pages' words is pinned in `tests/codex.test.js`.
+- TDR-040: tapping the Ledger while Codex pages are unread opens the Codex (one tap from the badge). Opening or closing a page's title counts as reading it; new pages start open. Not browser-tested beyond the existing axe run, which covers the Codex page.

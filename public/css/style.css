@@ -444,3 +444,10 @@ body.still .toast { animation: none; }
 .why-total { margin: 0; padding-top: var(--s-2); border-top: 1px solid var(--line); }
 .omen-bar { margin: 0 0 var(--s-2); }
 .bar-fill.omen { background: var(--gloom-deep); }
+
+/* codex: native details, a dot on new pages */
+.codex-bar { align-items: center; }
+.codex-cat > summary { cursor: pointer; }
+details.entry > summary { cursor: pointer; font: 600 var(--t-lg) var(--serif); color: var(--ink); min-height: 44px; display: flex; align-items: center; gap: var(--s-2); }
+details.entry[open] > summary { margin-bottom: var(--s-1); }
+.new-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--badge); box-shadow: 0 0 8px var(--badge); flex: none; }
