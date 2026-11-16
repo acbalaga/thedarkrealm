@@ -787,7 +787,7 @@
         cond: function () { return S.bestShaft >= p[0]; }, prog: function () { return Math.min(1, S.bestShaft / p[0]); } });
     });
 
-    function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n % 10 === 0 ? 6 : 1); }
+    function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n > FINAL_SHAFT ? Math.pow(D.ELDER_GROWTH, n - FINAL_SHAFT) : 1) * (n % 10 === 0 ? 6 : 1); }
     function shaftReward(n) {
       return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult * (n % 10 === 0 && C.lidless ? 2 : 1));
     }

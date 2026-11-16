@@ -232,6 +232,7 @@ function simulate(opts) {
   var policy = POLICIES[name];
   if (!policy) throw new Error('Unknown policy: ' + name);
   var core = loadCore();
+  if (process.env.TDR_ELDER) core.D.ELDER_GROWTH = Number(process.env.TDR_ELDER);
   var wall = WALL0, mono = 0;
   var rng = mulberry32(seed), prng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   /* The engine draws one number for the realm's seed while loading. That draw comes from a
