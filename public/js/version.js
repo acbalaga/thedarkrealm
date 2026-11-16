@@ -1,2 +1,2 @@
 /* Written by tools/stamp-sw.js. Do not edit. game.js reads it once and removes it. */
-window.TDR_VERSION = 'tdr-e4bd28a468';
+window.TDR_VERSION = 'tdr-4f8c2026c4';
