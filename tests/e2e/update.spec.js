@@ -32,7 +32,7 @@ test('a new version waits, is offered, and applies on request', { skip: !chromiu
     await page.reload();                                   // now controlled by the worker
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
     await openKeeping(page);
-    const v1 = (await page.locator('text=/^Version tdr-/').textContent()).trim();
+    const v1 = (await page.locator('text=/^Build tdr-/').textContent()).trim();
     assert.equal(await page.locator('button', { hasText: 'Apply update' }).isVisible(), false);
 
     // Ship a "new version": change a listed file and its cache name.
@@ -44,12 +44,12 @@ test('a new version waits, is offered, and applies on request', { skip: !chromiu
     await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
     await openKeeping(page);
     await page.locator('button', { hasText: 'Apply update' }).waitFor({ state: 'visible', timeout: 10000 });
-    assert.equal((await page.locator('text=/^Version tdr-/').textContent()).trim(), v1, 'the running page keeps its version until applied');
+    assert.equal((await page.locator('text=/^Build tdr-/').textContent()).trim(), v1, 'the running page keeps its version until applied');
 
     await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Apply update' }).click()]);
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
     await openKeeping(page);
-    assert.equal((await page.locator('text=/^Version tdr-/').textContent()).trim(), 'Version tdr-second0000');
+    assert.equal((await page.locator('text=/^Build tdr-/').textContent()).trim(), 'Build tdr-second0000');
 
     // Offline still loads from the new cache.
     await page.context().setOffline(true);

@@ -192,7 +192,7 @@ function altered(e) {
     snd: { lines: [{ id: 'shelf', left: 1000 }], done: 5, dry: { shallows: 1, shelf: 2, trench: 3 } }, relics: { table1: 1, loft2: 1 },
     ended: true,
     seen: 1.7e12 + 5, debt: 1234, marks: 2, exportedAt: 1.6e12, remindedAt: 1.65e12,
-    opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false, buyRite: 10, vol: 65, amb: false, sfx: false, haptic: false },
+    opts: { sci: true, motion: false, buy: 25, keys: false, chatter: false, buyRite: 10, vol: 65, amb: false, sfx: false, haptic: false, gate: false },
     auto: { den: { gleaner: true }, rite: { edge: true } },
     current: 'narrow', currentChoices: 2, fathoms: [{ n: 1, current: 'loud', vow: 'hands', kept: true, sec: 100, glass: 3, best: 10 }],
     pane: { seen: { p01: 1 }, choice: '' },

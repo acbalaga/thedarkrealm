@@ -121,7 +121,7 @@
         marks: 0,             // times the save failed its seal or its audit
         exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
         remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
-        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true, buyRite: 1, vol: 40, amb: true, sfx: true, haptic: true },
+        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true, buyRite: 1, vol: 40, amb: true, sfx: true, haptic: true, gate: true },
         nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
@@ -246,6 +246,7 @@
       s.opts.amb = !own(o.opts, 'amb') || o.opts.amb !== false;
       s.opts.sfx = !own(o.opts, 'sfx') || o.opts.sfx !== false;
       s.opts.haptic = !own(o.opts, 'haptic') || o.opts.haptic !== false;
+      s.opts.gate = !own(o.opts, 'gate') || o.opts.gate !== false;
       if (own(o.opts, 'buyRite') && [1, 10, 25, 'max'].indexOf(o.opts.buyRite) >= 0) s.opts.buyRite = o.opts.buyRite;
       D.DENIZENS.forEach(function (d) { if (o.auto && flag(o.auto.den, d.id)) s.auto.den[d.id] = true; });
       D.RITES.forEach(function (r) { if (o.auto && flag(o.auto.rite, r.id)) s.auto.rite[r.id] = true; });

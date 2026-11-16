@@ -7,6 +7,8 @@
   var CLICK_CAP = 14;       // hand gathers accepted per second
   var VERSION = window.TDR_VERSION || 'unversioned';     // written by tools/stamp-sw.js, shown in the Realm tab
   try { delete window.TDR_VERSION; } catch (e) {}
+  var EDITION = D.CHRONICLE[0];                            // the named release, kept in data.js
+  var EDITION_TEXT = 'Edition ' + EDITION.ed + ' \u00b7 ' + EDITION.name;
 
   /* Clocks are captured once so later overrides of Date.now or performance.now change nothing. */
   var wallNow = Date.now.bind(Date);
@@ -278,7 +280,7 @@
 
   /* Tab and Shift+Tab stay inside the dialog. */
   function trapFocus(ev) {
-    if (ev.key !== 'Tab' || !modalOpen) return;
+    if (ev.key !== 'Tab' || !modalOpen || gateOpen) return;
     var f = [].slice.call($('modal').querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])')).filter(function (n) { return !n.disabled && !n.hidden && n.offsetParent !== null; });
     if (!f.length) { ev.preventDefault(); $('modal').querySelector('.modal-card').focus(); return; }
     var first = f[0], last = f[f.length - 1], at = document.activeElement;
@@ -328,6 +330,8 @@
     $('pages').appendChild(node);
     pages[def.id] = node;
     updaters[def.id] = (def.build || BUILDERS[def.id])(node);
+    var realm = NAVM.dest('realm');
+    if (realm && realm.pages.some(function (p) { return p.id === def.id; })) node.appendChild(el('p', 'colophon', EDITION_TEXT));
   }
 
   /* Later features register a page here: addPage('host', { id: 'soundings', label: 'Soundings', lock: 'rites', build: fn }). */
@@ -1122,7 +1126,10 @@
     var o3 = el('label', 'check'); var c3 = document.createElement('input'); c3.type = 'checkbox';
     o3.appendChild(c3); o3.appendChild(document.createTextNode(' Keyboard shortcuts'));
     c3.onchange = function () { S.opts.keys = c3.checked; };
-    page.appendChild(o1); page.appendChild(o2); page.appendChild(o4); page.appendChild(o3);
+    var o5 = el('label', 'check'); var c5 = document.createElement('input'); c5.type = 'checkbox';
+    o5.appendChild(c5); o5.appendChild(document.createTextNode(' The threshold before the seat at each launch'));
+    c5.onchange = function () { S.opts.gate = c5.checked; };
+    page.appendChild(o1); page.appendChild(o2); page.appendChild(o4); page.appendChild(o3); page.appendChild(o5);
     page.appendChild(el('p', 'dim small', 'Keys: G Seat, R Realm, H Host, D Deep, L Ledger, 1 2 3 the Litanies. Escape closes a dialog. On the Stillwell, Enter or Space gathers once per press.'));
 
     page.appendChild(el('h3', 'sub-head', 'Version'));
@@ -1131,12 +1138,13 @@
     upBtn.onclick = applyUpdate;
     upRow.appendChild(upBtn);
     page.appendChild(upRow);
-    page.appendChild(el('p', 'dim small', 'Version ' + VERSION));
+    page.appendChild(el('p', 'dim small', EDITION_TEXT + '. ' + EDITION.note));
+    page.appendChild(el('p', 'dim small', 'Build ' + VERSION));
 
     return function () {
       defs.forEach(function (d) { d.dd.textContent = d.fn(); });
       vol.value = String(S.opts.vol); swA.c.checked = S.opts.amb; swC.c.checked = S.opts.sfx; swH.c.checked = S.opts.haptic;
-      c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys; c4.checked = S.opts.chatter;
+      c1.checked = S.opts.sci; c2.checked = S.opts.motion; c3.checked = S.opts.keys; c4.checked = S.opts.chatter; c5.checked = S.opts.gate;
       upBtn.hidden = !waitingWorker;
       refreshBackups();
       var stale = engine.backupStale(S.played, isInstalled(), S.exportedAt, wallNow());
@@ -1695,8 +1703,9 @@
      Ignored while typing, with Ctrl, Alt or Meta held, while a dialog is open, or when switched off in Keeping. */
   var KEY_DEST = { g: 'seat', r: 'realm', h: 'host', d: 'deep', l: 'ledger' };
   function onKey(ev) {
+    if (gateOpen) return;                                  // the threshold handles its own keys
     if (ev.key === 'Escape') { if (hideWhy() || closeTopModal()) ev.preventDefault(); return; }
-    if (!S.opts.keys || ev.ctrlKey || ev.altKey || ev.metaKey || modalOpen) return;
+    if (!S.opts.keys || ev.ctrlKey || ev.altKey || ev.metaKey || modalOpen || gateOpen) return;
     var t = ev.target;
     if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     var lit = { '1': 'teeth', '2': 'breath', '3': 'undertow' }[ev.key];
@@ -1951,6 +1960,55 @@
     render();
   }
 
+  /* ---------- the threshold ----------
+     A quiet door before the seat, once per launch (a reload in the same tab skips it). The game is already
+     running underneath, so nothing is lost by lingering. The rest of the page is inert until it closes. */
+  var GATE_SEEN = 'tdr-gate-seen';
+  var gateOpen = false, gateBehind = ['#top', 'main', '#bar', '#toasts', '#modal', '#popover'];
+  function gateLines(isNew) {
+    if (isNew) return D.GATE.first.slice();
+    var when = { returned: S.pane.choice === 'returned', kept: S.pane.choice === 'kept', ended: S.ended && !S.pane.choice,
+      unlit: S.unlightings > 0, shafts: !!S.unlocked.shafts };
+    var out = [], st = D.GATE.state.filter(function (x) { return when[x.when]; })[0];
+    if (st) out.push(st.text);
+    out.push(D.GATE.back[Math.floor(Math.random() * D.GATE.back.length)]);
+    return out;
+  }
+  function gateWanted() {
+    if (!S.opts.gate) return false;
+    try { return sessionStorage.getItem(GATE_SEEN) !== '1'; } catch (e) { return true; }
+  }
+  function openGate(isNew) {
+    var lines = $('gate-lines');
+    lines.replaceChildren.apply(lines, gateLines(isNew).map(function (t) { return el('p', null, t); }));
+    $('gate-where').textContent = (S.pane.choice ? D.PANE.endings[S.pane.choice].title : 'Vesperdeep') + '  \u00b7  Fathom ' + (S.unlightings + 1);
+    $('gate-go').textContent = isNew ? D.GATE.firstBtn : D.GATE.backBtn;
+    $('gate-promise').textContent = D.GATE.promise;
+    $('gate-ed').textContent = EDITION_TEXT;
+    gateBehind.forEach(function (q) { var n = document.querySelector(q); if (n) n.setAttribute('inert', ''); });
+    $('gate').hidden = false;
+    gateOpen = true;
+    $('gate-go').onclick = closeGate;
+    $('gate').addEventListener('keydown', gateKey);
+    $('gate-go').focus();
+  }
+  function gateKey(ev) {
+    if (ev.key === 'Tab') { ev.preventDefault(); $('gate-go').focus(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); closeGate(); }
+  }
+  function closeGate() {
+    if (!gateOpen) return;
+    gateOpen = false;
+    try { sessionStorage.setItem(GATE_SEEN, '1'); } catch (e) {}
+    $('gate').removeEventListener('keydown', gateKey);
+    gateBehind.forEach(function (q) { var n = document.querySelector(q); if (n) n.removeAttribute('inert'); });
+    var g = $('gate');
+    function done() { g.hidden = true; g.classList.remove('leaving'); }
+    if (S.opts.motion) { g.classList.add('leaving'); setTimeout(done, 350); } else done();
+    var card = $('modal').querySelector('.modal-card');
+    if (modalOpen && card) card.focus(); else $('well').focus();
+  }
+
   function boot() {
     var loaded = engine.load();
     S = engine.S;
@@ -1991,6 +2049,7 @@
     if (loaded.note) say(loaded.note);
     applyNav();
     applyMotion();
+    if (gateWanted()) openGate(isNew);
     engine.start();
     frame();
     setInterval(frame, 100);

@@ -88,6 +88,19 @@
   </div>
 </div>
 
+<!-- The threshold: shown once per launch before the seat. Filled in by game.js. -->
+<div id="gate" class="gate" hidden>
+  <div class="gate-card" role="dialog" aria-modal="true" aria-labelledby="gate-title" aria-describedby="gate-lines">
+    <div class="gate-shaft" aria-hidden="true"></div>
+    <img class="gate-logo" src="icon.svg" alt="" width="72" height="72">
+    <p class="gate-title" id="gate-title">The Dark Realm</p>
+    <p class="gate-where" id="gate-where"></p>
+    <div class="gate-lines" id="gate-lines"></div>
+    <button id="gate-go" class="btn primary gate-go" type="button"></button>
+    <p class="gate-foot"><span id="gate-promise"></span><span class="gate-ed" id="gate-ed"></span></p>
+  </div>
+</div>
+
 <noscript><p class="noscript">The Dark Realm needs JavaScript to run. Everything stays on your device.</p></noscript>
 <script src="js/data.js"></script>
 <script src="js/core.js"></script>
