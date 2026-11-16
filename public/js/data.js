@@ -245,7 +245,7 @@ window.TDR_DATA = (function () {
 
   /* Automation thresholds: an automatic purchase never spends more than this share of the pool it draws from. */
   /* Extra Lampwarden and shaft HP growth for each shaft above the First Lamp (TDR-036). 1 would leave the old curve. */
-  var ELDER_GROWTH = 1.06;
+  var ELDER_GROWTH = 1.09;
 
   var AUTO = { denShare: 0.10, riteShare: 0.25, chamberlainWin: 0.6 };
 

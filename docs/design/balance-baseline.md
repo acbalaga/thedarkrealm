@@ -248,3 +248,5 @@ End: 40 Unlightings, Sunshaft 209, 9860661 Nightglass, 5.0d present of 59.9d
 ```
 
 TDR-036 (90-day runs, columns elapsed, present, played): `casual` reaches Sunshaft 150 at 45.7 d (was 13.8 d), 175 at 45.8 d, 200 at 47.5 d, so 150 to 200 takes 1.8 d against a target of 10 to 30. `active` reaches 150 at 38.3 d (was 9.3 d) and 200 at 39.9 d. The sim policy buys the cheapest perk first and its 150 milestone now lands with "All perks", so the 6,200 Nightglass added by Older Than Lamps and The Patient Dark moves the whole endgame later. Not tuned: see the owner note in `docs/tickets/README.md`.
+
+TDR-036 tuning: shafts above 150 have their HP multiplied by `ELDER_GROWTH` (data.js) for each shaft past the First Lamp. `casual`, 90 days, Sunshaft 150 to 200: 1.06 takes 9.0 d, 1.08 takes 13.1 d, 1.09 takes 15.2 d, 1.12 takes 37.8 d. Shipped at 1.09. Sunshaft 150 itself stays at 45.7 d (the perks added by this ticket, see above). `active` was not rerun. Try other values with `TDR_ELDER=1.07 npm run sim -- --policy casual --days 90`.
