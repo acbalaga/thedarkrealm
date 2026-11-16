@@ -391,6 +391,30 @@ body.still .floater { opacity: 0; }
   .check { padding: 0 var(--s-2); }
 }
 
+/* The app shell (index.html only). The document never scrolls: the header and, on phones, the bottom bar are
+   rows of a full-height column and only <main> scrolls between them. A scrolling document let the sticky
+   header slide away after one screen (body was one screen tall), and let mobile browsers drag the fixed
+   bar along with their collapsing toolbars and overscroll bounce. Contained overscroll also stops a
+   pull-to-refresh from reloading the realm mid-gather. */
+body.shell { height: 100%; height: 100dvh; min-height: 0; overflow: hidden; }
+body.shell #top { position: relative; flex: none; }
+body.shell main {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  max-width: none; margin: 0;
+  padding-left: max(calc(20px + env(safe-area-inset-left)), calc((100% - 1200px) / 2));
+  padding-right: max(calc(20px + env(safe-area-inset-right)), calc((100% - 1200px) / 2));
+}
+body.shell #scene { top: 0; }
+/* main is focusable so the keyboard can scroll it on a page with nothing else to focus. */
+body.shell main:focus { outline: none; }
+body.shell main:focus-visible { outline: 2px solid var(--gloom); outline-offset: -2px; }
+@media (max-width: 860px) {
+  body.shell #bar { position: relative; flex: none; }
+  body.shell main {
+    padding: 12px calc(12px + env(safe-area-inset-right)) 16px calc(12px + env(safe-area-inset-left));
+  }
+}
+
 /* 404 page (hosted deployments) */
 main.lost { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; min-height: 80vh; }
 main.lost .logo { width: 72px; height: 72px; border-radius: 16px; }

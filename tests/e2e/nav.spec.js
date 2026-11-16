@@ -54,7 +54,7 @@ function measure() {
     .filter((e) => Math.min(e.getBoundingClientRect().width, e.getBoundingClientRect().height) < 43.5)
     .map((e) => (e.id || e.className || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
   return { sx: de.scrollWidth - de.clientWidth, barDisplay: getComputedStyle(bar).display, barBottom: br.bottom, vh: window.innerHeight,
-    small, mainPad: parseFloat(getComputedStyle(document.querySelector('main')).paddingBottom), barH: br.height };
+    small, mainBottom: document.querySelector('main').getBoundingClientRect().bottom, barTop: br.top };
 }
 
 for (const [name, w, h] of SIZES) {
@@ -80,7 +80,7 @@ for (const [name, w, h] of SIZES) {
           if (narrow) {
             assert.equal(r.barDisplay, 'grid');
             assert.ok(Math.abs(r.barBottom - r.vh) < 1.5, 'the bar sits at the bottom edge, fully visible');
-            assert.ok(r.mainPad >= r.barH, 'main leaves room for the bar');
+            assert.ok(r.mainBottom <= r.barTop + 0.5, 'main ends where the bar begins, so nothing hides under it');
             assert.equal(JSON.stringify(r.small), '[]', 'targets under 44 px on ' + label + ' page ' + i);
           } else assert.equal(r.barDisplay, 'none');
         }
