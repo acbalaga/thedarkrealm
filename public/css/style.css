@@ -550,3 +550,32 @@ body.still .scene-box::before { transition: none; }
 .btn.pane-item.lit { border-color: var(--glass); }
 .btn.pane-item .pane-prog { margin-left: auto; }
 .pane-detail { min-height: 2.4em; }
+
+/* The threshold, before the seat. Far above, a thin Sunshaft (the Concord's light, so gold). Below, the realm. */
+.gate {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: var(--s-4);
+  background: radial-gradient(900px 600px at 50% 35%, #17122e 0%, var(--bg) 70%), var(--bg);
+  overflow-y: auto; animation: gate-in 400ms ease-out both;
+}
+.gate.leaving { animation: gate-out 350ms ease-in both; }
+.gate-card { position: relative; width: 100%; max-width: 460px; text-align: center; padding: 96px 0 var(--s-5); outline: none; }
+.gate-shaft {
+  position: absolute; left: 50%; top: 0; width: 2px; height: 80px; margin-left: -1px;
+  background: linear-gradient(to bottom, var(--above), transparent); opacity: .55;
+  animation: gate-flicker 6s ease-in-out infinite;
+}
+.gate-logo { display: block; margin: 0 auto var(--s-4); width: 72px; height: 72px; }
+.gate-title { margin: 0; font: var(--t-xl)/1.2 var(--serif); color: var(--ink); letter-spacing: .04em; }
+.gate-where { margin: var(--s-1) 0 var(--s-5); font-size: var(--t-sm); color: var(--dim); }
+.gate-lines { font: var(--t-md)/1.6 var(--serif); color: var(--prose); text-align: left; }
+.gate-lines p { margin: 0 0 var(--s-3); }
+.gate-go { margin-top: var(--s-4); min-width: 180px; min-height: 44px; font-size: var(--t-md); }
+.gate-foot { margin: var(--s-5) 0 0; font-size: var(--t-xs); color: var(--dim); display: flex; flex-direction: column; gap: var(--s-1); }
+@keyframes gate-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gate-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes gate-flicker { 0%, 100% { opacity: .55; } 50% { opacity: .3; } }
+body.still .gate, body.still .gate-shaft { animation: none; }
+@media (prefers-reduced-motion: reduce) { .gate, .gate-shaft { animation: none; } }
+
+/* The edition, written small at the foot of the Realm. */
+.colophon { margin: var(--s-5) 0 var(--s-2); text-align: center; font-size: var(--t-xs); color: var(--dim); letter-spacing: .03em; }

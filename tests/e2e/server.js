@@ -39,4 +39,29 @@ async function openKeeping(page) {
   await page.locator('#subnav button', { hasText: 'Keeping' }).click();
 }
 
+/* The threshold (the screen before the seat) shows once per tab. Most specs test the seat, so every browser
+   these specs launch marks it as already passed. A spec that wants it passes { tdrGate: true } to newContext. */
+const PASS_GATE = () => { try { sessionStorage.setItem('tdr-gate-seen', '1'); } catch (e) {} };
+try {
+  const chromium = require('playwright').chromium;
+  if (!chromium.__tdrGate) {
+    const launch = chromium.launch.bind(chromium);
+    chromium.launch = async (...args) => {
+      const browser = await launch(...args);
+      const newContext = browser.newContext.bind(browser);
+      browser.newContext = async (opts) => {
+        const o = Object.assign({}, opts);
+        const want = o.tdrGate === true;
+        delete o.tdrGate;
+        const ctx = await newContext(o);
+        if (!want) await ctx.addInitScript(PASS_GATE);
+        return ctx;
+      };
+      browser.newPage = async (opts) => { const ctx = await browser.newContext(opts); const page = await ctx.newPage(); page.on('close', () => ctx.close().catch(() => {})); return page; };
+      return browser;
+    };
+    chromium.__tdrGate = true;
+  }
+} catch (e) { /* playwright is not installed: the specs skip themselves */ }
+
 module.exports = { serve, PUB, openKeeping };

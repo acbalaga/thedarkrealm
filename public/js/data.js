@@ -650,6 +650,41 @@ window.TDR_DATA = (function () {
     ]
   };
 
+  /* The editions, newest first. The first entry is the one shipped, shown at the foot of the Realm and on the
+     threshold. Add an entry for each release a player would notice and bump package.json to match
+     (tests/chronicle.test.js keeps the two in step). The build stamp in version.js changes with every file;
+     the edition changes only when someone decides it should. */
+  var CHRONICLE = [
+    { ed: '1.1', name: 'The Threshold', note: 'A door before the seat. The edition is written at the foot of the Realm.' },
+    { ed: '1.0', name: 'The Elder Shafts', note: 'Everything up to and past the First Lamp.' }
+  ];
+
+  /* The threshold: the screen before the seat. `first` is shown to a new realm, in order. A returning realm
+     gets its `state` line (the first that applies, if any) and one line from `back`. */
+  var GATE = {
+    first: [
+      'When the living die, their shadows sink. They come down here, to Vesperdeep, and the dark keeps them.',
+      'At the bottom there is a throne room with a seat in it. The seat is empty. On the floor beside it, a shadow with no owner is about to wake.'
+    ],
+    firstBtn: 'Sink down',
+    backBtn: 'Take the seat',
+    state: [
+      { when: 'returned', text: 'The seat is hers again. You are where a shadow belongs, on the floor beside it, long and patient.' },
+      { when: 'kept', text: 'The pane is dark from her side. The seat is yours, and the denizens have stopped looking at the glass.' },
+      { when: 'ended', text: 'One lamp burns at the foot of the throne. By it, the seat casts a shadow in the shape of a queen.' },
+      { when: 'unlit', text: 'The realm has sunk again since you first woke. From here the surface is a rumour the Scribes keep for reference.' },
+      { when: 'shafts', text: 'The Auric Concord has filed another report about the dark. It recommends more lamps.' }
+    ],
+    back: [
+      'The denizens bow to the seat, not to whoever is in it. They have kept bowing.',
+      'The Scribes kept the Ledger while you were above. They do not count the days you were not here.',
+      'Gloom is what dark becomes when it is left alone. It has been left alone for a while.',
+      'The Stillwell has gone on filling. It does not need to be watched, but it does not mind.',
+      'The Hush-Wardens were standing in the doorway when you left. They are still standing there. They call this keeping.'
+    ],
+    promise: 'Nothing here is sent anywhere.'
+  };
+
   /* The Codex headings, in order. */
   var CODEX_CATS = [
     { id: 'realm', title: 'The Realm' }, { id: 'concord', title: 'The Concord' }, { id: 'queen', title: 'The Queen' },
@@ -661,6 +696,6 @@ window.TDR_DATA = (function () {
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PANE: PANE, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, ELDER_GROWTH: ELDER_GROWTH, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CHRONICLE: CHRONICLE, GATE: GATE, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PANE: PANE, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, ELDER_GROWTH: ELDER_GROWTH, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();
