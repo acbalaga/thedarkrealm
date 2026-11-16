@@ -31,7 +31,9 @@ function loadCore() {
   };
   vm.createContext(box);
   ['data.js', 'core.js'].forEach(function (f) {
-    vm.runInContext(fs.readFileSync(path.join(JS, f), 'utf8'), box, { filename: f });
+    var src = fs.readFileSync(path.join(JS, f), 'utf8');
+    if (f === 'data.js' && process.env.TDR_ELDER) src = src.replace(/var ELDER_GROWTH = [\d.]+;/, 'var ELDER_GROWTH = ' + Number(process.env.TDR_ELDER) + ';');   // a what-if for tuning
+    vm.runInContext(src, box, { filename: f });
   });
   return { D: box.window.TDR_DATA, create: box.window.TDR_CORE.create };
 }
@@ -232,7 +234,6 @@ function simulate(opts) {
   var policy = POLICIES[name];
   if (!policy) throw new Error('Unknown policy: ' + name);
   var core = loadCore();
-  if (process.env.TDR_ELDER) core.D.ELDER_GROWTH = Number(process.env.TDR_ELDER);
   var wall = WALL0, mono = 0;
   var rng = mulberry32(seed), prng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   /* The engine draws one number for the realm's seed while loading. That draw comes from a
