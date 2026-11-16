@@ -20,7 +20,7 @@ Current formulas, the modifier model new systems must use, and the budget they s
 
 Useful calibration: radiance grows ×1.25 per shaft, so **×9.3 Might is worth about 10 shafts** and ×2 is worth about 3.
 
-Perk costs sum to 3,612 Nightglass. One run yielding 2,500 needs about 2e20 Gloom.
+Perk costs sum to 10,127 Nightglass (3,612 originally, plus A Second Line 40, The Usher 25, The Precentor 90, The Chamberlain 160, The Patient Dark 1,200, Older Than Lamps 5,000). One run yielding 2,500 needs about 2e20 Gloom.
 
 ## 2. The modifier model (built in TDR-004)
 
@@ -40,6 +40,7 @@ Every bonus, old and new, resolves into one of these channels. `recalc()` multip
 | `awayPace` | Added to away pace, capped at 1 | Long Sleep |
 | `bossTime` | Lampwarden seconds | none yet |
 | `den.<id>` | One denizen's output | tier workings |
+| `autoHands` | Hand gathers made for you each second (additive) | Bound Hands |
 
 A source is a function `mods(S, env)` returning `{ channel: factor }`. Sources are registered in a fixed list. Multiplicative channels multiply. `awayPace` and `bossTime` add.
 

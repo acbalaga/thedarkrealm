@@ -96,7 +96,7 @@ test('debt is paid before any credit', () => {
   clock.mono += 1000; clock.wall += 1000 + 199 * 1000;
   r = e.tick();
   assert.equal(e.S.debt, 0);
-  assert.equal(r.away.sec, 98);
+  assert.equal(r.away, null, 'under five minutes: credited with a Whisper, no report');
   close(e.S.totalGloom - g0, 2 + 0.5 * 98);
 });
 
@@ -105,7 +105,7 @@ test('a long monotonic gap is credited as away time, not as play', () => {
   const g0 = e.S.totalGloom;
   clock.mono += 100 * 1000; clock.wall += 100 * 1000;
   const r = e.tick();
-  assert.notEqual(r.away, null);
+  assert.equal(r.away, null, 'a throttled tab never produces a report');
   close(e.S.totalGloom - g0, 100 * 0.5);
 });
 

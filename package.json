@@ -6,9 +6,18 @@
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\"",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "npm run stamp && wrangler deploy",
+    "check": "node tools/check.js",
+    "sim": "node tools/sim.js",
+    "e2e": "node --test \"tests/e2e/*.spec.js\"",
+    "stamp": "node tools/stamp-sw.js",
+    "baseline": "node tools/baseline.js"
   },
   "devDependencies": {
-    "wrangler": "^4"
+    "axe-core": "4.14.0",
+    "wrangler": "4.162.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

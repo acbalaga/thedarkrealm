@@ -28,7 +28,11 @@ window.TDR_DATA = (function () {
     { id: 'orchard', glyph: '❀', name: 'Starless Orchard', plural: 'Starless Orchards', tool: 'Grafts', cost: 1.2e11, rate: 9.5e5,
       desc: 'Trees that fruit only in total dark. Each fruit is a small night.' },
     { id: 'sleeper', glyph: '◉', name: 'Sleeper Below', plural: 'Sleepers Below', tool: 'Dreams', cost: 3e12, rate: 7e6,
-      desc: 'It dreams the realm darker. Do not ask what else it dreams.' }
+      desc: 'It dreams the realm darker. Do not ask what else it dreams.' },
+    { id: 'bell', glyph: '\u265c', name: 'Drowned Bell', plural: 'Drowned Bells', tool: 'Clappers', cost: 7e13, rate: 5.2e7,
+      desc: 'Cast to call people up out of a mine. It rang once too late.', gate: 'shaft150' },
+    { id: 'wright', glyph: '\u25c8', name: 'Pane-Wright', plural: 'Pane-Wrights', tool: 'Leads', cost: 1.8e15, rate: 3.9e8,
+      desc: 'Fits dark into dark with a border of darker. It hums while it works. The tune is hers.', gate: 'pane12' }
   ];
 
   var UPG_TIERS = [
@@ -68,8 +72,378 @@ window.TDR_DATA = (function () {
     { id: 'names', name: 'Rite of Remembered Names', desc: 'Echoes gained ×1.15 per level.', base: 20, g: 1.7 },
     { id: 'hands', name: 'Rite of Many Hands', desc: 'Gathering by hand ×1.5 per level.', base: 10, g: 1.6 },
     { id: 'sleep', name: 'Rite of the Long Sleep', desc: 'The realm works 10% harder while you are away (base 50%).', base: 40, g: 3, max: 5 },
-    { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 }
+    { id: 'lure', name: 'Rite of the Baited Dark', desc: 'Stray Lanterns come 10% sooner per level.', base: 60, g: 2.5, max: 5 },
+    { id: 'breathing', name: 'Rite of the Long Breath', desc: 'Litanies return 5% sooner per level.', base: 30, g: 2.2, max: 6 }
   ];
+
+  /* What the Seat tells the player to do next. The first entry whose `when` holds wins. `f` is the facts
+     object built by the engine. `go` is where tapping it leads. Add entries in order of importance. */
+  function article(name) { return /^[AEIOU]/.test(name) ? 'An ' : 'A '; }
+  var OBJECTIVES = [
+    { id: 'first', when: function (f) { return f.denizens === 0; }, go: { dest: 'realm', page: 'den' },
+      text: function () { return 'Gather 10 Gloom and bind a Wisp-Gleaner.'; } },
+    { id: 'offer', when: function (f) { return f.offer; }, go: { dest: 'seat', page: 'seat' },
+      text: function () { return 'The denizens have intentions.'; } },
+    { id: 'slack', when: function (f) { return f.slack; }, go: { dest: 'host', page: 'soundings' },
+      text: function () { return 'Draw up the line.'; } },
+    { id: 'working', when: function (f) { return !!f.work; }, go: { dest: 'realm', page: 'work' },
+      text: function (f) { return 'A working is ready: ' + f.work + '.'; } },
+    { id: 'lampwarden', when: function (f) { return !!f.boss; }, go: { dest: 'host', page: 'shaft' },
+      text: function (f) { return 'The Host needs ' + (f.boss.mult < 10 ? f.boss.mult.toFixed(1) : Math.ceil(f.boss.mult)) + '\u00d7 more Might for ' + f.boss.name + '.'; } },
+    { id: 'unlight', when: function (f) { return f.unlight; }, go: { dest: 'deep', page: 'unl' },
+      text: function () { return 'The realm is heavy enough to let go.'; } },
+    { id: 'nextden', when: function (f) { return !!f.nextDen; }, go: { dest: 'realm', page: 'den' },
+      text: function (f) { return article(f.nextDen.name) + f.nextDen.name + ' in ' + f.nextDen.when + '.'; } },
+    { id: 'rite', when: function (f) { return f.rite; }, go: { dest: 'host', page: 'rite' },
+      text: function () { return 'The Cantors can perform a rite.'; } },
+    { id: 'omen', when: function (f) { return !!f.omen; }, go: { dest: 'ledger', page: 'omen' },
+      text: function (f) { return f.omen.name + ': ' + Math.floor(f.omen.ratio * 100) + '%.'; } },
+    { id: 'quiet', when: function () { return true; }, go: null,
+      text: function () { return 'The realm is quiet.'; } }
+  ];
+
+  /* The Surface Clock: the hours above, from the device's local time. A phase runs from `from` to `to`
+     (minutes after midnight; Night wraps past midnight). Starting values. */
+  var SKY = {
+    SYNODIC: 29.530588853,                       // days
+    MOON_REF: Date.UTC(2000, 0, 6, 18, 14),      // a new moon, 2000-01-06 18:14 UTC (JD 2451550.1)
+    MOON_NAMES: ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'],
+    MOONLESS: { lo: 0.034, hi: 0.966 }, LIDLESS: { lo: 0.466, hi: 0.534 },
+    // Local calendar windows, inclusive, northern calendar: [month 1-12, first day, last day].
+    DATED: [
+      { id: 'longestnight', name: 'The Longest Night', windows: [[12, 20, 22]], effect: { gloom: 2 }, effectText: 'Gloom \u00d72',
+        line: 'The Longest Night. The Gleaners have put down their hooks to listen.' },
+      { id: 'longestday', name: 'The Longest Day', windows: [[6, 20, 22]], effect: { echo: 2 }, effectText: 'Echoes \u00d72',
+        line: 'The Longest Day. The Scribes have drawn a sun and crossed it out.' },
+      { id: 'balance', name: 'The Balance', windows: [[3, 19, 21], [9, 21, 23]], effect: { gloom: 1.25, echo: 1.25 }, effectText: 'Gloom and Echoes \u00d71.25', line: null }
+    ],
+    MOON_EVENTS: [
+      { id: 'moonless', name: 'Moonless Night', effect: { glass: 1.1 }, effectText: 'Nightglass \u00d71.1 for an Unlighting', line: 'No moon tonight. The Cantors are holding one note.' },
+      { id: 'lidless', name: 'Lidless Moon', effect: {}, effectText: 'Echoes \u00d72 from Lampwardens', line: 'The moon is open. The Lampwardens are working by it.' }
+    ],
+    CAP: 3,                                      // no channel gets more than this from all temporary sky and petition factors together
+    ECLIPSE: { name: 'The Performance', effect: { 'den.choir': 10 }, effectText: 'Eclipse Choir \u00d710', line: 'The sun is covered. The Choir is singing it through.', each: 0.02, max: 10 },
+    /* Solar eclipses, by local calendar date. Checked against the NASA GSFC solar eclipse catalogue
+       (https://eclipse.gsfc.nasa.gov/SEdecade/SEdecade2021.html and SEdecade2031.html, and the yearly pages
+       OH2027 and OH2028) on 2026-11-15. A date from memory that could not be confirmed (2035-09-02) was left out. */
+    ECLIPSES: [
+      { id: 'e2027a', date: '2027-02-06', type: 'annular' }, { id: 'e2027b', date: '2027-08-02', type: 'total' },
+      { id: 'e2028a', date: '2028-01-26', type: 'annular' }, { id: 'e2028b', date: '2028-07-22', type: 'total' },
+      { id: 'e2030a', date: '2030-06-01', type: 'annular' }, { id: 'e2030b', date: '2030-11-25', type: 'total' },
+      { id: 'e2031a', date: '2031-05-21', type: 'annular' }, { id: 'e2031b', date: '2031-11-14', type: 'hybrid' },
+      { id: 'e2033a', date: '2033-03-30', type: 'total' }, { id: 'e2034a', date: '2034-03-20', type: 'total' },
+      { id: 'e2034b', date: '2034-09-12', type: 'annular' }, { id: 'e2035a', date: '2035-03-09', type: 'annular' }
+    ],
+    PHASES: [
+      { id: 'night', glyph: '\u263e', name: 'Night above', from: 1200, to: 300, effect: { gloom: 1.25 }, effectText: 'Gloom \u00d71.25',
+        line: 'The surface has gone to bed. The dark is running down the walls.' },
+      { id: 'dawn', glyph: '\u25d0', name: 'Dawn above', from: 300, to: 480, effect: { lanternRate: 2 }, effectText: 'Lanterns twice as often',
+        line: 'Change of shift above. The lamps are coming thick.' },
+      { id: 'day', glyph: '\u2600', name: 'Day above', from: 480, to: 1020, effect: { echo: 1.25 }, effectText: 'Echoes \u00d71.25',
+        line: 'Day above. The chains are busy.' },
+      { id: 'dusk', glyph: '\u25d1', name: 'Dusk above', from: 1020, to: 1200, effect: { lanternRate: 2 }, effectText: 'Lanterns twice as often',
+        line: 'Change of shift above. The lamps are coming thick.' }
+    ]
+  };
+
+  /* Lantern kinds: chance in percent (they add to 100), life in seconds. Warden's Lamps fall back to Stray
+     when no Lampwarden is being fought. Kinds unlock after 10 lanterns have been snuffed. */
+  var LANTERNS = {
+    unlockAfter: 10,
+    kinds: [ { id: 'stray', w: 80, life: 14 }, { id: 'votive', w: 14, life: 9 }, { id: 'warden', w: 6, life: 20 } ],
+    // Every `every`th spawn is a Procession: `count` Stray Lanterns, `gap` seconds apart, each alive `life` seconds, each paying `share` of a normal outcome.
+    procession: { every: 8, count: 5, gap: 1.6, life: 8, share: 0.4 },
+    // Each unbroken snuff adds `step` to lantern yields and durations, up to `cap` steps.
+    streak: { step: 0.04, cap: 10 },
+    // A Warden's Lamp takes this share of a Lampwarden's radiance and adds this many seconds to its timer.
+    wardenShare: 0.2, wardenTime: 10
+  };
+
+  /* Stray Lantern paths and their weights. The interface picks one per lantern. */
+  var LANTERN_PATHS = [
+    { id: 'ltr', w: 35 },
+    { id: 'rtl', w: 35 },
+    { id: 'drop', w: 30 }
+  ];
+
+  /* Litanies: active abilities. `on` seconds of effect, `cd` seconds before the next. Starting values.
+     The Rite of the Long Breath multiplies cooldowns by 0.95 per level. */
+  var LITANIES = [
+    { id: 'teeth', glyph: '\u2694', name: 'Litany of Teeth', desc: 'Host Might \u00d73 for 15 seconds.', on: 15, cd: 300 },
+    { id: 'breath', glyph: '\u223f', name: 'Litany of the Held Breath', desc: 'A Lampwarden\'s timer does not run for 10 seconds.', on: 10, cd: 480 },
+    { id: 'undertow', glyph: '\u2248', name: 'Litany of the Undertow', desc: 'At once, gather 90 seconds of Gloom.', on: 0, cd: 420 }
+  ];
+
+  /* Petitions: a denizen's stated intention, granted once a day. `needs` is what the player must have to be offered it.
+     `effect` is a modifier map (channels in docs/design/ECONOMY.md); `now` an instant effect; `rest` lasts until replaced.
+     Text is verbatim from docs/design/LORE_BIBLE.md section 6. Starting values. */
+  var PETITIONS = {
+    unlockAt: 25,                       // total denizens
+    playedGap: 21600,                   // seconds of counted play between grants
+    milestones: [3, 7, 14, 30, 60, 100], factor: 1.045,
+    names: ['Three Days Kept', 'A Week of Evenings', 'A Fortnight', 'A Month Below', 'Two Months Below', 'A Hundred Vigils'],
+    list: [
+      { id: 'rake', who: 'Gleaners', needs: { den: 'gleaner' }, text: 'The Gleaners intend to rake the upper galleries today.', short: 'Raking', effectText: 'Wisp-Gleaner output \u00d710', effect: { 'den.gleaner': 10 } },
+      { id: 'ink', who: 'Scribes', needs: { den: 'scribe' }, text: 'The Scribes intend to re-rule the Ledger. They will need the Stillwell quiet for it.', short: 'Re-ruling', effectText: 'Gathering by hand yields nothing. All Gloom \u00d71.5', effect: { gloom: 1.5, hand: 0 } },
+      { id: 'curtain', who: 'Weavers', needs: { den: 'weaver', shafts: true }, text: 'The Weavers intend to hang the long curtain across the east shaft.', short: 'The curtain', effectText: 'Lampwarden timer +15 s', effect: { bossTime: 15 } },
+      { id: 'watch', who: 'Wardens', needs: { den: 'warden', shafts: true }, text: 'The Wardens intend to stand nearer the frontier today.', short: 'The watch', effectText: 'Host Might \u00d71.5', effect: { might: 1.5 } },
+      { id: 'rehearse', who: 'Cantors', needs: { den: 'cantor' }, text: 'The Cantors intend to rehearse the whole piece, not only the ending.', short: 'Rehearsal', effectText: 'Litanies return twice as fast', effect: { litanyRate: 2 } },
+      { id: 'temper', who: 'Forge-hands', needs: { den: 'forge' }, text: 'The Forge intends to take a tenth of the Stillwell and give it back as an edge.', short: 'Tempering', effectText: 'Lose 10% of your Gloom now. Host Might \u00d72', effect: { might: 2 }, now: 'temper' },
+      { id: 'sluice', who: 'Tidewells', needs: { den: 'tide' }, text: 'The Tidewells intend to open every sluice until midnight.', short: 'Sluices', effectText: 'Tidewell output \u00d75', effect: { 'den.tide': 5 } },
+      { id: 'bait', who: 'Gleaners', needs: { lanterns: 5 }, text: 'The Gleaners intend to leave a light burning by the crack, to see what comes down for it.', short: 'A light by the crack', effectText: 'Lanterns three times as often', effect: { lanternRate: 3 } },
+      { id: 'names', who: 'Cantors', needs: { rites: true }, text: 'The Cantors intend to read the names in the Ledger aloud, all of them.', short: 'The names', effectText: 'Echoes \u00d71.5', effect: { echo: 1.5 } },
+      { id: 'rest', who: 'denizens', needs: {}, text: 'The realm intends to rest. It will work better for it while you are gone.', short: 'Rest', effectText: 'Away pace +25 points, until the next grant', effect: { awayPace: 0.25 }, rest: true },
+      { id: 'tithe', who: 'Scribes', needs: { shafts: true }, text: 'The Scribes intend to sell a page of the Ledger to the Sea. They expect a fair price in Echoes.', short: 'The page sold', effectText: 'Echoes now: 20 seals of the frontier shaft', effect: {}, now: 'tithe' },
+      { id: 'hands', who: 'denizens', needs: {}, text: 'Every denizen intends to gather by hand today, the way you do.', short: 'Many hands', effectText: 'Gathering by hand \u00d75', effect: { hand: 5 } }
+    ]
+  };
+
+  /* Soundings: lines lowered into the Sunless Sea. `hours` out, `cost` seconds of Gloom per second to lower, the two
+     sets they draw from. Starting values. Relics, sets and lines are verbatim from docs/design/LORE_BIBLE.md section 7. */
+  var SOUNDINGS = {
+    depths: [
+      { id: 'shallows', name: 'The Shallows', hours: 1, cost: 60, sets: ['table', 'lamp'], unlock: 'always', brings: 'things from a table, things from a lamp room' },
+      { id: 'shelf', name: 'The Shelf', hours: 4, cost: 600, sets: ['survey', 'loft'], unlock: 'tide25', brings: 'a surveyor\'s instruments, things from a choir loft' },
+      { id: 'trench', name: 'The Trench', hours: 12, cost: 3600, sets: ['queen', 'bed'], unlock: 'unlight', brings: 'things that were hers, things from under something asleep' }
+    ],
+    chance: 0.35, perDry: 0.15, sealsPerHour: 6
+  };
+  var RELIC_SETS = [
+      { id: "table", name: "The Drowned Table", stat: "echo", each: 0.02, bonus: 1.25 },
+      { id: "survey", name: "The Surveyor's Kit", stat: "might", each: 0.02, bonus: 1.25 },
+      { id: "loft", name: "The Choir Loft", stat: "gloom", each: 0.02, bonus: 1.25 },
+      { id: "lamp", name: "The Lamp Room", stat: "lanternYield", each: 0.02, bonus: 1.25 },
+      { id: "queen", name: "The Queen's Things", stat: "glass", each: 0.02, bonus: 1.1 },
+      { id: "bed", name: "The Sleeper's Bed", stat: "awayPace", each: 0.01, bonus: 0.06 }
+  ];
+  var RELICS = [
+      { id: "table1", set: "table", name: "A Cup, Whole", line: "The glaze is worn where a thumb rested." },
+      { id: "table2", set: "table", name: "A Spoon Worn on One Side", line: "Left-handed. Patient." },
+      { id: "table3", set: "table", name: "A Salt Cellar, Still Full", line: "Nobody down here will taste it to check." },
+      { id: "table4", set: "table", name: "A Chair Leg", line: "The other three are still looking for it." },
+      { id: "survey1", set: "survey", name: "Askerel's Plumb Line", line: "It hangs straight in any wind." },
+      { id: "survey2", set: "survey", name: "A Level With No Bubble", line: "It says down." },
+      { id: "survey3", set: "survey", name: "A Chain Link Stamped With a Sun", line: "The first one that broke." },
+      { id: "survey4", set: "survey", name: "A Waxed Map Case", line: "Empty. The map was the dangerous part." },
+      { id: "loft1", set: "loft", name: "A Fork That Hums at Dusk", line: "It does not need striking." },
+      { id: "loft2", set: "loft", name: "A Page of Rests", line: "The hardest piece they own." },
+      { id: "loft3", set: "loft", name: "A Baton of Black Wood", line: "It is heavier at the end of the bar." },
+      { id: "loft4", set: "loft", name: "A Cracked Bell", line: "It rings the crack." },
+      { id: "lamp1", set: "lamp", name: "A Wick Never Lit", line: "Kept on its own shelf." },
+      { id: "lamp2", set: "lamp", name: "A Snuffer", line: "Well used. Somebody enjoyed it." },
+      { id: "lamp3", set: "lamp", name: "A Tin of Shadow-Tallow", line: "Sealed. It will stay sealed." },
+      { id: "lamp4", set: "lamp", name: "A Lens With a Thumbprint Inside", line: "Nobody can say how." },
+      { id: "queen1", set: "queen", name: "A Comb", line: "One long dark hair." },
+      { id: "queen2", set: "queen", name: "A Ring Too Large for Any Hand", line: "It fits the arm of the seat." },
+      { id: "queen3", set: "queen", name: "A Key to No Door", line: "The Wardens watch it." },
+      { id: "queen4", set: "queen", name: "A Glazier's Diamond", line: "For cutting panes." },
+      { id: "bed1", set: "bed", name: "A Tooth the Size of a Door", line: "It is a small one." },
+      { id: "bed2", set: "bed", name: "A Scale, Still Warm", line: "Do not hold it long." },
+      { id: "bed3", set: "bed", name: "A Dream on a Slate", line: "The Scribes turned it face down." },
+      { id: "bed4", set: "bed", name: "A Breath in a Jar", line: "It will not be opened." }
+  ];
+
+  /* Automation thresholds: an automatic purchase never spends more than this share of the pool it draws from. */
+  /* Extra Lampwarden and shaft HP growth for each shaft above the First Lamp (TDR-036). 1 would leave the old curve. */
+  var ELDER_GROWTH = 1.09;
+
+  var AUTO = { denShare: 0.10, riteShare: 0.25, chamberlainWin: 0.6 };
+
+  /* Currents: the grain of a fathom, chosen at each Unlighting from the second on. Names and lines verbatim from
+     docs/design/LORE_BIBLE.md section 8. `mods` are modifier channels. Starting values. */
+  var CURRENTS = [
+    { id: 'still', name: 'A Still Fathom', short: 'Still', line: 'Nothing pulls. The realm sinks the way it always has.', boon: 'No boon.', bane: 'No bane.', mods: {} },
+    { id: 'silted', name: 'A Silted Fathom', short: 'Silted', line: 'The water is thick here. The wells love it. Hands do not.', boon: 'Tidewell and Sleeper Below output \u00d73.', bane: 'Gathering by hand \u00d70.5.', mods: { 'den.tide': 3, 'den.sleeper': 3, hand: 0.5 } },
+    { id: 'loud', name: 'A Loud Fathom', short: 'Loud', line: 'Every seal rings. The Hush will not come.', boon: 'Echoes \u00d72.', bane: 'Stray Lanterns never grant a Deep Hush.', mods: { echo: 2 }, noHush: true },
+    { id: 'narrow', name: 'A Narrow Fathom', short: 'Narrow', line: 'Close walls. Cheap to fill, hard to swing in.', boon: 'Denizens cost 25% less.', bane: 'Host Might \u00d70.6.', mods: { cost: 0.75, might: 0.6 } },
+    { id: 'lit', name: 'A Lantern-Thick Fathom', short: 'Lantern-thick', line: 'They have found this one already. Chains everywhere.', boon: 'Lanterns arrive twice as often.', bane: 'Away pace \u221220 points.', mods: { lanternRate: 2, awayPace: -0.2 } },
+    { id: 'cold', name: 'A Cold Fathom', short: 'Cold', line: 'The Forge works twice as well. The Orchard will not fruit.', boon: 'Shade-Forge output \u00d74, Host Might \u00d71.5.', bane: 'Starless Orchard output \u00d70.25.', mods: { 'den.forge': 4, might: 1.5, 'den.orchard': 0.25 } },
+    { id: 'hollow', name: 'A Hollow Fathom', short: 'Hollow', line: 'Echoes carry. So does everything else.', boon: 'Echoes \u00d71.5, Rites cost 15% less.', bane: 'Lampwarden timer \u221210 s.', mods: { echo: 1.5, riteCost: 0.85, bossTime: -10 } },
+    { id: 'heavy', name: 'A Heavy Fathom', short: 'Heavy', line: 'The glass will be thicker. It will take longer to press.', boon: 'Nightglass from the Unlighting that ends it \u00d71.25.', bane: 'All Gloom \u00d70.7.', mods: { glass: 1.25, gloom: 0.7 } }
+  ];
+
+  /* Vows: something given up for one fathom. Kept by sealing Sunshaft `goal` in that fathom. Names and lines
+     verbatim from docs/design/LORE_BIBLE.md section 8. Starting values. */
+  var VOWS = [
+    { id: 'hands', name: 'Vow of Empty Hands', line: 'The Stillwell is not to be touched.', rule: 'Gathering by hand yields nothing, and Bound Hands is inert.', goal: 40,
+      keeping: 'The Keeping of Hands', keepText: 'Gathering by hand \u00d72. Bound Hands has six shadows instead of four.', mods: { hand: 2 } },
+    { id: 'silence', name: 'Vow of Silence', line: 'No rite is to be performed.', rule: 'No Rite can be performed. Rites carried in still apply.', goal: 30,
+      keeping: 'The Keeping of Silence', keepText: 'Rites cost 10% less.', mods: { riteCost: 0.9 } },
+    { id: 'door', name: 'Vow of the Open Door', line: 'The lanterns are to pass unsnuffed.', rule: 'Lanterns appear but cannot be snuffed.', goal: 50,
+      keeping: 'The Keeping of the Door', keepText: 'Lanterns stay 6 seconds longer.', mods: { lanternLife: 20 / 14 } },
+    { id: 'chain', name: 'Vow of the Short Chain', line: 'The Lampwardens are to be given less time.', rule: 'The Lampwarden timer is 20 seconds.', goal: 60,
+      keeping: 'The Keeping of the Chain', keepText: 'Lampwarden timer +10 seconds.', mods: { bossTime: 10 } },
+    { id: 'few', name: 'Vow of Few', line: 'No more than fifty of any kind are to be bound.', rule: 'No more than 50 of any denizen.', goal: 50,
+      keeping: 'The Keeping of Few', keepText: 'Denizens cost 5% less.', mods: { cost: 0.95 } },
+    { id: 'unlit', name: 'Vow of the Unlit', line: 'The glass is to stay in its cloth.', rule: 'The +5% per Nightglass bonus is ignored.', goal: 70,
+      keeping: 'The Keeping of the Unlit', keepText: 'Nightglass gained \u00d71.1.', mods: { glass: 1.1 } }
+  ];
+  var VOW_LINES = { kept: 'The vow is kept. Something heavier was waiting at the bottom.', down: 'The vow is set down. Nothing is owed.' };
+
+  /* The Pane: twenty-four lights, lit by what the player has done. Order is the drawing order, clockwise from the top. */
+  var PANE = {
+    factor: 1.03,
+    lights: [
+          {
+                "id": "p01",
+                "name": "The Shard You Woke With",
+                "cond": "glassTotal >= 1",
+                "kind": "glass"
+          },
+          {
+                "id": "p02",
+                "name": "The First Lamp",
+                "cond": "bestShaft >= 150",
+                "kind": "shaft"
+          },
+          {
+                "id": "p03",
+                "name": "Ten Fathoms",
+                "cond": "unlightings >= 10",
+                "kind": "fathoms"
+          },
+          {
+                "id": "p04",
+                "name": "All Settings",
+                "cond": "every perk owned",
+                "kind": "perks"
+          },
+          {
+                "id": "p05",
+                "name": "The Moths' Revenge",
+                "cond": "lanterns >= 100",
+                "kind": "lanterns"
+          },
+          {
+                "id": "p06",
+                "name": "A World Below",
+                "cond": "2,000 denizens at once",
+                "kind": "denizens"
+          },
+          {
+                "id": "p07",
+                "name": "The Keeping of Hands",
+                "cond": "vow kept: hands",
+                "kind": "keeping",
+                "key": "hands"
+          },
+          {
+                "id": "p08",
+                "name": "The Keeping of Silence",
+                "cond": "vow kept: silence",
+                "kind": "keeping",
+                "key": "silence"
+          },
+          {
+                "id": "p09",
+                "name": "The Keeping of the Door",
+                "cond": "vow kept: door",
+                "kind": "keeping",
+                "key": "door"
+          },
+          {
+                "id": "p10",
+                "name": "The Keeping of the Chain",
+                "cond": "vow kept: chain",
+                "kind": "keeping",
+                "key": "chain"
+          },
+          {
+                "id": "p11",
+                "name": "The Keeping of Few",
+                "cond": "vow kept: few",
+                "kind": "keeping",
+                "key": "few"
+          },
+          {
+                "id": "p12",
+                "name": "The Keeping of the Unlit",
+                "cond": "vow kept: unlit",
+                "kind": "keeping",
+                "key": "unlit"
+          },
+          {
+                "id": "p13",
+                "name": "The Drowned Table",
+                "cond": "all four relics of The Drowned Table",
+                "kind": "shelf",
+                "key": "table"
+          },
+          {
+                "id": "p14",
+                "name": "The Surveyor's Kit",
+                "cond": "all four relics of The Surveyor's Kit",
+                "kind": "shelf",
+                "key": "survey"
+          },
+          {
+                "id": "p15",
+                "name": "The Choir Loft",
+                "cond": "all four relics of The Choir Loft",
+                "kind": "shelf",
+                "key": "loft"
+          },
+          {
+                "id": "p16",
+                "name": "The Lamp Room",
+                "cond": "all four relics of The Lamp Room",
+                "kind": "shelf",
+                "key": "lamp"
+          },
+          {
+                "id": "p17",
+                "name": "The Queen's Things",
+                "cond": "all four relics of The Queen's Things",
+                "kind": "shelf",
+                "key": "queen"
+          },
+          {
+                "id": "p18",
+                "name": "The Sleeper's Bed",
+                "cond": "all four relics of The Sleeper's Bed",
+                "kind": "shelf",
+                "key": "bed"
+          },
+          {
+                "id": "p19",
+                "name": "Nothing in the Sky",
+                "cond": "a Moonless Night seen",
+                "kind": "moonless"
+          },
+          {
+                "id": "p20",
+                "name": "The Holiday",
+                "cond": "a Longest Night seen",
+                "kind": "longestnight"
+          },
+          {
+                "id": "p21",
+                "name": "Sung Through",
+                "cond": "an eclipse witnessed",
+                "kind": "eclipse"
+          },
+          {
+                "id": "p22",
+                "name": "A Month Below",
+                "cond": "30 vigils",
+                "kind": "vigils"
+          },
+          {
+                "id": "p23",
+                "name": "The Whole Ledger",
+                "cond": "every Codex page there is, before the endings",
+                "kind": "ledger"
+          },
+          {
+                "id": "p24",
+                "name": "Every Sign",
+                "cond": "every Omen there is, before the endings",
+                "kind": "signs"
+          }
+    ],
+    whole: ['The last light goes in and the window is a window.', 'She is on the other side of it, and she is not looking at the room. She is looking at you, the way a person looks at their own hand.', 'Every shadow belongs to something. You did not know whose you were because she was not there to be cast by. She is there now. The First Lamp is burning at the foot of the throne, and for the first time in an age, there is a light behind her.', 'The Cantors have stopped. The denizens are looking at the seat, and then at the glass, and then at you.'],
+    endings: { returned: { button: 'Give her the seat', title: "The Queen's Shadow", omen: 'Hers' }, kept: { button: 'Keep the chair', title: 'The Second Queen', omen: 'Yours' } }
+  };
 
   var PERKS = [
     { id: 'absence', cost: 1, name: 'The First Absence', desc: 'Begin each fathom with 15 Wisp-Gleaners and 5 Moth-Scribes.' },
@@ -78,13 +452,19 @@ window.TDR_DATA = (function () {
     { id: 'halls', cost: 8, name: 'Echoing Halls', desc: 'Echoes gained ×2.' },
     { id: 'unsleeping', cost: 12, name: 'Unsleeping', desc: 'The realm works up to 24 hours while you are away (was 8).' },
     { id: 'bound', cost: 18, name: 'Bound Hands', desc: 'Four shadows gather at the Stillwell for you, every second.' },
+    { id: 'usher', cost: 25, name: 'The Usher', desc: 'Binds denizens for you, one at a time, while you are on the seat. Each denizen row gains a toggle. It spends at most a tenth of your Gloom on one.' },
     { id: 'thrift', cost: 30, name: 'Thrifty Dark', desc: 'Denizens cost 10% less.' },
+    { id: 'twolines', cost: 40, name: 'A Second Line', desc: 'Two Soundings can be out at once.' },
     { id: 'quick', cost: 45, name: 'Remembered Road', desc: 'Begin each fathom halfway to your deepest sealed shaft.' },
     { id: 'steward', cost: 70, name: 'The Steward', desc: 'Workings are bought for you the moment you can afford them.' },
+    { id: 'precentor', cost: 90, name: 'The Precentor', desc: 'Performs Rites for you while you are on the seat. Each Rite row gains a toggle. It spends at most a quarter of your Echoes on one.' },
     { id: 'remember', cost: 120, name: 'Rites Remembered', desc: 'Keep half of every Rite level through an Unlighting.' },
+    { id: 'chamberlain', cost: 160, name: 'The Chamberlain', desc: 'After a failed Lampwarden the Host returns as soon as it could win in 60% of the time (was 80%), and passes shafts it has already sealed at ten a second.' },
     { id: 'hunger', cost: 200, name: 'Lantern-Hunger', desc: 'Stray Lanterns yield three times as much and their boons last twice as long.' },
     { id: 'queen', cost: 600, name: 'The Queen\'s Reflection', desc: 'All Gloom, Might and Echoes ×5.' },
-    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' }
+    { id: 'patient', cost: 1200, name: 'The Patient Dark', desc: 'The realm works up to 48 hours while you are away. Requires Unsleeping.', needs: 'unsleeping' },
+    { id: 'further', cost: 2500, name: 'Further Down', desc: 'All Gloom and Might ×10.' },
+    { id: 'older', cost: 5000, name: 'Older Than Lamps', desc: 'All Gloom and Might ×1.7.' }
   ];
 
   var BOSSES = {
@@ -102,65 +482,185 @@ window.TDR_DATA = (function () {
     120: 'The Unblinking Lens',
     130: 'The Concord\'s Own Shadow',
     140: 'Solar Chancellor Ibe Tarrow',
-    150: 'The First Lamp'
+    150: 'The First Lamp',
+    160: 'The Tin Sun',
+    170: 'A Chain With No Top',
+    180: 'The Furnace That Was a Country',
+    190: 'The Last Miner\'s Candle',
+    200: 'The Hole in the Field'
   };
 
   /* Codex entries. `when` is evaluated against a small facts object built in game.js. */
   var CODEX = [
-    { id: 'waking', title: 'Waking', when: function (f) { return true; },
+    { id: 'waking', cat: 'realm', sys: 'core', title: 'Waking', when: function (f) { return true; },
       text: 'Every shadow belongs to something. Yours does not. You woke on the floor of a throne room with no memory of a body, a name, or a sun to be cast by. The seat above you was empty and had been for a long time. Nobody objected when you sat in it.' },
-    { id: 'gloom', title: 'Gloom', when: function (f) { return f.total >= 10; },
+    { id: 'gloom', cat: 'realm', sys: 'core', title: 'Gloom', when: function (f) { return f.total >= 10; },
       text: 'Gloom is what dark becomes when it is left alone long enough. It pools in the Stillwell at the foot of the throne, cool and slow, and it can be gathered like water. Everything in Vesperdeep is built from it, including, you suspect, you.' },
-    { id: 'seat', title: 'The Vacant Seat', when: function (f) { return f.denizens >= 1; },
+    { id: 'seat', cat: 'realm', sys: 'core', title: 'The Vacant Seat', when: function (f) { return f.denizens >= 1; },
       text: 'The first Wisp-Gleaner bowed before it took its hook. It did not bow to you. It bowed to the seat. The denizens call you Regent, which is the word for someone who keeps a chair warm.' },
-    { id: 'ledger', title: 'The Moth-Scribes\' Ledger', when: function (f) { return f.den.scribe >= 1; },
+    { id: 'ledger', cat: 'realm', sys: 'core', title: 'The Moth-Scribes\' Ledger', when: function (f) { return f.den.scribe >= 1; },
       text: 'The Scribes keep one book. Each page lists a place where the dark runs deep and a date it was last checked. The oldest pages are in a hand none of them recognise. The entries stop mid-line.' },
-    { id: 'lantern', title: 'Stray Lanterns', when: function (f) { return f.lanterns >= 1; },
+    { id: 'lantern', cat: 'concord', sys: 'core', title: 'Stray Lanterns', when: function (f) { return f.lanterns >= 1; },
       text: 'A lamp on a long chain, lowered through some crack to see what is down here. Scouts, the Scribes say. Snuff one and its light spills, and spilled light curdles into Gloom faster than anything you can gather by hand.' },
-    { id: 'concord', title: 'The Auric Concord', when: function (f) { return f.shaftsOpen; },
+    { id: 'concord', cat: 'concord', sys: 'core', title: 'The Auric Concord', when: function (f) { return f.shaftsOpen; },
       text: 'Above the roof of the realm there are people, and the people have a government of lamplighters called the Auric Concord. They have started cutting Sunshafts down into Vesperdeep. A shaft is a wound of daylight. Your Host goes up each one and stitches it shut.' },
-    { id: 'echo', title: 'Echoes', when: function (f) { return f.echoesTotal >= 1; },
+    { id: 'echo', cat: 'realm', sys: 'core', title: 'Echoes', when: function (f) { return f.echoesTotal >= 1; },
       text: 'When a living thing dies its shadow comes loose and sinks here. Most arrive carrying a scrap of whoever cast them: a habit, a tune, the way they held a cup. These scraps are Echoes. The Concord\'s shafts are full of them, caught like moths in a jar.' },
-    { id: 'hush', title: 'The Hush', when: function (f) { return f.den.warden >= 1; },
+    { id: 'hush', cat: 'realm', sys: 'core', title: 'The Hush', when: function (f) { return f.den.warden >= 1; },
       text: 'Hush-Wardens were here before the throne room had walls. They do not serve the seat. They serve the quiet, and they have decided, for now, that you are quieter than the alternative.' },
-    { id: 'tallow', title: 'Shadow-Tallow', when: function (f) { return f.best >= 5; },
+    { id: 'tallow', cat: 'concord', sys: 'core', title: 'Shadow-Tallow', when: function (f) { return f.best >= 5; },
       text: 'Your Host brought back a Concord lamp. It burns a grey wax that gives a steady, cheap light. The Weavers would not touch it. The wax is rendered shadow. They are not drilling to explore. They are drilling for fuel.' },
-    { id: 'vale', title: 'Orrin Vale\'s Chain', when: function (f) { return f.best >= 10; },
+    { id: 'vale', cat: 'concord', sys: 'core', title: 'Orrin Vale\'s Chain', when: function (f) { return f.best >= 10; },
       text: 'Lampwarden Vale came down the first chain himself, which the Scribes consider either brave or badly managed. His last report was recovered with his lamp: "It is not empty. Recommend we stop calling it empty."' },
-    { id: 'cantors', title: 'What the Cantors Sing', when: function (f) { return f.den.cantor >= 1; },
+    { id: 'cantors', cat: 'queen', sys: 'core', title: 'What the Cantors Sing', when: function (f) { return f.den.cantor >= 1; },
       text: 'There are no words to the dusk-song, only the long falling note a day makes as it ends. The Cantors say it was taught to them by a queen. When you ask which queen they look at the seat, and then at you, and keep singing.' },
-    { id: 'sister', title: 'The Glasswright Sister', when: function (f) { return f.best >= 20; },
+    { id: 'sister', cat: 'concord', sys: 'core', title: 'The Glasswright Sister', when: function (f) { return f.best >= 20; },
       text: 'She lined her shaft with mirrors so the daylight would arrive undiluted. It worked. Your Host learned to fight with its eyes shut, and she learned that a mirror in a dark room shows nothing at all.' },
-    { id: 'sea', title: 'The Sunless Sea', when: function (f) { return f.den.tide >= 1; },
+    { id: 'sea', cat: 'sea', sys: 'core', title: 'The Sunless Sea', when: function (f) { return f.den.tide >= 1; },
       text: 'Under Vesperdeep there is water that has never been looked at. The Tidewells draw from it. What comes up is Gloom so old it has weight, and sometimes a current pulls at the buckets, patiently, from below.' },
-    { id: 'ysmerel', title: 'Ysmerel', when: function (f) { return f.best >= 30; },
+    { id: 'ysmerel', cat: 'queen', sys: 'core', title: 'Ysmerel', when: function (f) { return f.best >= 30; },
       text: 'Prospector-General Askerel carried a survey map. On it, the throne room is labelled in an older script: SEAT OF YSMEREL, THE UNSEEN. So there was a queen, the surface knew her name, and nobody down here will say it.' },
-    { id: 'unlighting', title: 'The Unlighting', when: function (f) { return f.unlightOpen; },
+    { id: 'unlighting', cat: 'deep', sys: 'core', title: 'The Unlighting', when: function (f) { return f.unlightOpen; },
       text: 'The oldest page in the Ledger describes a working. Gather enough Gloom and the realm grows heavy. Heavy enough, and it can be let go, to sink one fathom further from the sun. Everything built is left behind. The shafts are left behind too, dangling over nothing.' },
-    { id: 'fathom', title: 'A Fathom Down', when: function (f) { return f.unlightings >= 1; },
+    { id: 'fathom', cat: 'deep', sys: 'core', title: 'A Fathom Down', when: function (f) { return f.unlightings >= 1; },
       text: 'It was not like falling. It was like a breath going out. The denizens are gone and the Stillwell is shallow again, but the dark here is closer-grained, and something of the old realm came with you, pressed hard and bright-black in your hand.' },
-    { id: 'glass', title: 'Nightglass', when: function (f) { return f.glassTotal >= 10; },
+    { id: 'glass', cat: 'queen', sys: 'core', title: 'Nightglass', when: function (f) { return f.glassTotal >= 10; },
       text: 'Dark under enough pressure turns to glass. Nightglass does not reflect what stands in front of it. It reflects what stood there before. Hold a shard up in the throne room and the seat is not empty.' },
-    { id: 'orchard', title: 'The Orchard', when: function (f) { return f.den.orchard >= 1; },
+    { id: 'orchard', cat: 'realm', sys: 'core', title: 'The Orchard', when: function (f) { return f.den.orchard >= 1; },
       text: 'The trees were planted in rows by someone with a plan. The Gleaners harvest and never eat. One fruit, split open, held a night with a thin moon in it and the sound of a door closing. You closed the fruit.' },
-    { id: 'pell', title: 'Dawn-Auditor Pell\'s Report', when: function (f) { return f.best >= 50; },
+    { id: 'pell', cat: 'concord', sys: 'core', title: 'Dawn-Auditor Pell\'s Report', when: function (f) { return f.best >= 50; },
       text: '"Yield per shaft is falling. The seam appears to be moving away from us. I am instructed to write that this is impossible. I note for the record that we are now using longer chains."' },
-    { id: 'sleeper', title: 'The Sleeper Below', when: function (f) { return f.den.sleeper >= 1; },
+    { id: 'sleeper', cat: 'sea', sys: 'core', title: 'The Sleeper Below', when: function (f) { return f.den.sleeper >= 1; },
       text: 'It was at the bottom of the sunless sea and it did not wake when you bound it. It breathes once an age. On the in-breath, the realm leans toward it. The Wardens will not stand on that side of the throne room.' },
-    { id: 'reflection', title: 'The Reflection', when: function (f) { return f.unlightings >= 3; },
+    { id: 'reflection', cat: 'queen', sys: 'core', title: 'The Reflection', when: function (f) { return f.unlightings >= 3; },
       text: 'In the Nightglass the figure on the seat is clearer each fathom. She is not looking at the room. She is looking at the shard, from the other side, as if checking how far you have come.' },
-    { id: 'drill', title: 'The Noon Drill', when: function (f) { return f.best >= 100; },
+    { id: 'drill', cat: 'concord', sys: 'core', title: 'The Noon Drill', when: function (f) { return f.best >= 100; },
       text: 'No crew. No lampwarden. A machine that bores straight down and carries the hour of noon in a lens at its tip. The Concord has stopped sending people, which means the people above have started to be afraid.' },
-    { id: 'ownshadow', title: 'The Concord\'s Own Shadow', when: function (f) { return f.best >= 130; },
+    { id: 'ownshadow', cat: 'concord', sys: 'core', title: 'The Concord\'s Own Shadow', when: function (f) { return f.best >= 130; },
       text: 'A government that burns shadow for light still casts one. It came down the shaft unwilling, huge, shaped like a hall full of lamps. It did not fight well. When your Host sealed the shaft it stayed on this side, and asked, politely, where it should stand.' },
-    { id: 'queenseat', title: 'The Queen\'s Seat', when: function (f) { return f.unlightings >= 5; },
+    { id: 'queenseat', cat: 'queen', sys: 'core', title: 'The Queen\'s Seat', when: function (f) { return f.unlightings >= 5; },
       text: 'The Cantors finally said it. Ysmerel did not leave. She performed the first Unlighting alone, and the pressure of it made her the first Nightglass. Every shard you carry is a piece of the same pane. A Regent keeps the chair warm until the pane is whole.' },
-    { id: 'firstlamp', title: 'The First Lamp', when: function (f) { return f.best >= 150; },
-      text: 'At the top of the last shaft there was no engine and no army. There was one small lamp on a kitchen table, the first the Concord ever lit, still burning shadow-tallow rendered from a shadow whose name the Ledger had kept on its oldest page. Your Host did not snuff it. It carried the flame down, and set it at the foot of the throne, and for the first time the seat cast a shadow of its own.' }
+    { id: 'firstlamp', cat: 'concord', sys: 'core', title: 'The First Lamp', when: function (f) { return f.best >= 150; },
+      text: 'At the top of the last shaft there was no engine and no army. There was one small lamp on a kitchen table, the first the Concord ever lit, still burning shadow-tallow rendered from a shadow whose name the Ledger had kept on its oldest page. Your Host did not snuff it. It carried the flame down, and set it at the foot of the throne, and for the first time the seat cast a shadow of its own.' },
+    { id: "surfaceclock", cat: "sky", sys: "skyclock", title: "The Surface Clock", when: function (f) { return f.skyOpen >= 1; },
+      text: "The Scribes have worked out the hours above from the lanterns. When the lamps come thick it is the change of shift. When the shafts go quiet the surface is asleep, and the dark runs down the walls with nothing to stop it. You have started keeping their hours. It is the only thing you have in common." },
+    { id: "moonless", cat: "sky", sys: "sky", title: "The Moonless Night", when: function (f) { return f.sky.moonless >= 1; },
+      text: "Once in every turn of the moon there is a night with nothing in the sky. The Concord doubles its watch. The Cantors hold one note until morning. Nightglass cut on that night comes out thicker, and nobody will say why." },
+    { id: "lidless", cat: "sky", sys: "sky", title: "The Lidless Moon", when: function (f) { return f.sky.lidless >= 1; },
+      text: "A full moon is a lamp nobody lit. The Lampwardens work by it without tallow and count that as thrift. Their shafts stay crewed all night, which means more shadows on the chains, which means more Echoes for you. The Concord has not noticed the arithmetic." },
+    { id: "longestnight", cat: "sky", sys: "sky", title: "The Longest Night", when: function (f) { return f.sky.longestnight >= 1; },
+      text: "The denizens keep one holiday. Nobody announces it. The Gleaners put down their hooks, the Forge goes quiet, and the whole realm listens to the surface run out of day. Then everyone goes back to work, and the work goes better than it has all year." },
+    { id: "longestday", cat: "sky", sys: "sky", title: "The Longest Day", when: function (f) { return f.sky.longestday >= 1; },
+      text: "Up there they light bonfires and call it a festival. Down here it is the day the chains run fastest. The Scribes mark it in the Ledger with a small drawing of a sun, crossed out." },
+    { id: "balance", cat: "sky", sys: "sky", title: "The Balance", when: function (f) { return f.sky.balance >= 1; },
+      text: "Twice a year the day and the night are the same length and neither side will admit it. The Wardens stand in the doorways. Nothing happens. The Wardens consider this a success." },
+    { id: "performance", cat: "sky", sys: "sky", title: "The Performance", when: function (f) { return f.sky.eclipse >= 1; },
+      text: "Forty voices, rehearsing since before the throne had a room. Today the sun was covered and they sang it through once, start to end, with no mistakes. Afterward the conductor put down the baton and asked when the next one was. The Scribes knew." },
+    { id: "petitions", cat: "realm", sys: "petitions", title: "Petitions", when: function (f) { return f.petitions >= 1; },
+      text: "The denizens do not ask for things. They inform the seat of what they intend and wait to see if it objects. The Scribes call these petitions, to be polite. You may grant one a day. They have noticed which ones you choose." },
+    { id: "litanies", cat: "realm", sys: "litanies", title: "Litanies", when: function (f) { return f.litanies >= 1; },
+      text: "A rite is slow. A litany is the same thing said fast, by everyone, at once. The Cantors can manage it for a few breaths and need a long silence afterward. The Lampwardens have a word for it in their reports. The word is \"weather\"." },
+    { id: "vigil", cat: "realm", sys: "petitions", title: "The Vigil", when: function (f) { return f.vigils >= 7; },
+      text: "The Scribes have started a tally of the days you came to the seat and granted something. They do not count the days you did not. When asked why, the eldest said that a ledger of absences is just a list of everything." },
+    { id: "soundings", cat: "sea", sys: "soundings", title: "Soundings", when: function (f) { return f.soundings >= 1; },
+      text: "The Tidewells go down further than their ropes. Someone tied on more rope. What came up was not Gloom. It was a cup, whole, with the glaze worn where a thumb had rested for forty years. The Scribes made a new page." },
+    { id: "set_table", cat: "sea", sys: "soundings", title: "The Drowned Table", when: function (f) { return f.sets.table >= 1; },
+      text: "Four things from one table. Laid out together they make a place setting for someone who ate alone and did not mind. The Echoes come more easily now, as if they had somewhere to sit." },
+    { id: "set_survey", cat: "sea", sys: "soundings", title: "The Surveyor's Kit", when: function (f) { return f.sets.survey >= 1; },
+      text: "Prospector-General Askerel's instruments, dropped down a shaft on purpose. The level has no bubble. The Host has learned to read it anyway. It says the same thing in every direction, which is down." },
+    { id: "set_loft", cat: "sea", sys: "soundings", title: "The Choir Loft", when: function (f) { return f.sets.loft >= 1; },
+      text: "The fork hums at dusk without being struck. The page is all rests. The Cantors say it is the most difficult piece they own and they have never once got through it without somebody breathing." },
+    { id: "set_lamp", cat: "sea", sys: "soundings", title: "The Lamp Room", when: function (f) { return f.sets.lamp >= 1; },
+      text: "A wick never lit, a snuffer, a tin, a lens. Somebody up there kept a lamp room and never used it. The Scribes think it was a lamplighter who preferred the dark. They have given the wick its own shelf." },
+    { id: "set_queen", cat: "sea", sys: "soundings", title: "The Queen's Things", when: function (f) { return f.sets.queen >= 1; },
+      text: "A comb. A ring too large for any hand. A key to no door in the realm. A glazier's diamond, for cutting panes. The Cantors would not touch any of them. The Weavers asked, carefully, whether you wanted the diamond sharpened." },
+    { id: "set_bed", cat: "sea", sys: "soundings", title: "The Sleeper's Bed", when: function (f) { return f.sets.bed >= 1; },
+      text: "You have been taking things from under something that is asleep. It has not woken. The Wardens stand a little further off than they did. The breath in the jar has not been opened and will not be." },
+    { id: "currents", cat: "deep", sys: "currents", title: "Currents", when: function (f) { return f.currents >= 1; },
+      text: "The realm does not sink straight down. There are currents in the deep dark, and each fathom has a grain to it, the way wood does. The Wardens can feel three of them from the seat. They will tell you which is which. They will not tell you which to take." },
+    { id: "vows", cat: "deep", sys: "vows", title: "Vows", when: function (f) { return f.vowsOpen >= 1; },
+      text: "The oldest Hush-Warden kept a vow for an age and will not say what it was. It says only that a thing given up on the way down is waiting, heavier, at the bottom. The Scribes have a column for vows. It was already ruled when they opened the page." },
+    { id: "pane", cat: "deep", sys: "pane", title: "The Pane", when: function (f) { return f.glassTotal >= 1; },
+      text: "Lay the shards out on the floor of the throne room and they do not fit each other. They fit a shape that is not here yet. The Weavers have drawn it: a round window, twenty-four lights, leaded in black. One light is already filled. It is the one you were holding when you woke." },
+    { id: "pane_half", cat: "deep", sys: "pane", title: "Twelve Lights", when: function (f) { return f.paneLit >= 12; },
+      text: "Half a window. Through it the throne room looks the way it did, which is to say, occupied. She is not sitting. She is standing at the pane with one hand flat on the other side, the way a person stands at a door they have decided not to knock on." },
+    { id: "elder", cat: "deep", sys: "elder", title: "The Elder Shafts", when: function (f) { return f.best >= 151; },
+      text: "Past the First Lamp the shafts do not stop. These were not cut by the Concord. The stone is older and the chains are a metal the Forge cannot name. Someone dug for shadow before there were lamplighters. Toward the end, they also used longer chains." },
+    { id: "bell", cat: "deep", sys: "elder", title: "The Drowned Bell", when: function (f) { return f.elderBell >= 1; },
+      text: "It was cast to call people up out of a mine. It rang once too late and was thrown down the shaft after them. It still rings. Nothing comes up. The Gleaners find this restful." },
+    { id: "root", cat: "deep", sys: "elder", title: "What Is Under the Seat", when: function (f) { return f.best >= 200; },
+      text: "At the top of the oldest shaft there was no lamp. There was a hole in a field, grown over, and a stone with a name worn off it. Your Host stood in daylight for the first time and cast nothing. It came home and reported that the surface is thin, and that most of the world is down here, and always was." },
+    { id: "end_returned", cat: "deep", sys: "ending", title: "The Seat, Returned", when: function (f) { return f.end === 2; },
+      text: "You stood up. It was easier than you expected. The pane opened like a door that had only ever been closed from one side, and she sat, and the First Lamp threw her shadow across the floor of the throne room, long and patient, and you were in it. You were it. The denizens bowed. This time it was not to the chair." },
+    { id: "end_kept", cat: "deep", sys: "ending", title: "The Seat, Kept", when: function (f) { return f.end === 3; },
+      text: "You stayed where you were. She watched you decide. Then she nodded, once, the way a person nods at their own reflection when it has finally done something on its own, and the pane went dark from her side. The denizens waited a while. Then the first Gleaner bowed, and it was not to the chair, and it was not to her." }
   ];
+
+  /* Court chatter: one line, drawn at random from the denizens the player owns. Verbatim from docs/design/LORE_BIBLE.md section 5. */
+  var CHATTER = {
+    gleaner: [
+      "A Gleaner found a corner it had not raked. It is very pleased.",
+      "Two Gleaners are arguing over a hook. It is the same hook.",
+      "A Gleaner has brought you a handful of dark. It is slightly better than the usual dark."
+    ],
+    scribe: [
+      "A Scribe asks how you spell your name. You do not know. It writes that down.",
+      "The Scribes have run out of ink again. Nobody mentions where it went.",
+      "A Scribe corrected the Ledger. The old line is still legible underneath."
+    ],
+    weaver: [
+      "The Weavers have finished a curtain. It hangs across nothing.",
+      "A Weaver measured you for something and would not say what.",
+      "The looms have stopped. They start again when you look away."
+    ],
+    warden: [
+      "A Warden has moved one pace to the left. This is being discussed.",
+      "The Wardens are standing nearer the seat today.",
+      "A Warden looked up. The others pretended not to see."
+    ],
+    cantor: [
+      "The Cantors are holding the low note. Your teeth can feel it.",
+      "A Cantor came in early. Nobody has forgiven it.",
+      "The Cantors have stopped. The silence is in the same key."
+    ],
+    forge: [
+      "The Forge rang once on its own.",
+      "Something was hammered thicker in the night. It is not clear what it was before.",
+      "The anvil is cold to the touch and getting colder."
+    ],
+    tide: [
+      "The Tidewells are high. Something below is breathing in.",
+      "A bucket came up heavier than it went down, and empty.",
+      "The water in the cisterns leaned to one side for an hour."
+    ],
+    choir: [
+      "The Eclipse Choir has reached the bar they always stop at.",
+      "Forty voices breathed in together. Nothing followed.",
+      "The conductor asked the Scribes for a date."
+    ],
+    orchard: [
+      "A fruit fell in the Orchard. Nobody heard it land.",
+      "The Orchard has put out one more row. Nobody planted it.",
+      "A Gleaner was found asleep under a tree, holding a small night."
+    ],
+    sleeper: [
+      "The Sleeper turned over. The realm waited until it settled.",
+      "It said a word in its sleep. The Scribes did not write it down.",
+      "The Wardens have moved to the other side of the room again."
+    ]
+  };
+
+  /* The Codex headings, in order. */
+  var CODEX_CATS = [
+    { id: 'realm', title: 'The Realm' }, { id: 'concord', title: 'The Concord' }, { id: 'queen', title: 'The Queen' },
+    { id: 'deep', title: 'The Deep' }, { id: 'sea', title: 'The Sea' }, { id: 'sky', title: 'The Sky' }
+  ];
+  /* Systems that exist. A Codex page whose `sys` is not listed here never unlocks and is not counted as dark.
+     Each ticket that adds a system adds its name here: 'sky', 'petitions', 'litanies', 'soundings', 'currents', 'vows', 'pane', 'elder'. */
+  var LIVE_SYSTEMS = ['core', 'litanies', 'skyclock', 'sky', 'petitions', 'soundings', 'currents', 'vows', 'pane', 'ending'];
 
   return freeze({
     DENIZENS: DENIZENS, UPG_TIERS: UPG_TIERS, HAND_UPGS: HAND_UPGS, REALM_UPGS: REALM_UPGS,
-    RITES: RITES, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
+    RITES: RITES, CHATTER: CHATTER, CODEX_CATS: CODEX_CATS, LIVE_SYSTEMS: LIVE_SYSTEMS, PANE: PANE, VOWS: VOWS, VOW_LINES: VOW_LINES, CURRENTS: CURRENTS, AUTO: AUTO, ELDER_GROWTH: ELDER_GROWTH, SOUNDINGS: SOUNDINGS, RELIC_SETS: RELIC_SETS, RELICS: RELICS, PETITIONS: PETITIONS, SKY: SKY, LITANIES: LITANIES, OBJECTIVES: OBJECTIVES, LANTERNS: LANTERNS, LANTERN_PATHS: LANTERN_PATHS, PERKS: PERKS, BOSSES: BOSSES, CODEX: CODEX
   });
 })();

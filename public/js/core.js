@@ -7,6 +7,7 @@
   var KEY = 'thedarkrealm.save.v2';
   var OLD_KEY = 'thedarkrealm.save.v1';
   var SAVE_TAG = 'TDR2';
+  var LEGACY_UNTIL = Date.UTC(2027, 5, 30, 23, 59, 59);   // 2027-06-30: after this the v1 save is retired, not read
   var MAX_SAVE = 200000;    // characters; a real save is a few KB
   var CLICK_CAP = 14;       // hand gathers accepted per second (the interface enforces it)
   var BIG = 1e300;
@@ -14,39 +15,114 @@
   var MARCH = 0.25;         // seconds the Host needs between shafts
   var BOSS_TIME = 45;       // seconds allowed against a Lampwarden
   var FINAL_SHAFT = 150;
+  var DEEP_SHAFT = 200;
   var GLASS_EXP = 0.3;      // Nightglass = (run Gloom / 1e9) ^ this
-  var TAB_IDS = ['den', 'work', 'shaft', 'rite', 'unl', 'omen', 'codex', 'set'];
+  var NAV_DESTS = ['seat', 'realm', 'host', 'deep', 'ledger'];
+  // Where each page of the first interface (one flat row of tabs) lives in the five destinations.
+  var OLD_TABS = { den: ['realm', 'den'], work: ['realm', 'work'], shaft: ['host', 'shaft'], rite: ['host', 'rite'],
+    unl: ['deep', 'unl'], omen: ['ledger', 'omen'], codex: ['ledger', 'codex'], set: ['ledger', 'set'] };
+
+  /* ---------- seeded randomness ----------
+     Use rng(label, counter) for anything a reload could otherwise reroll: daily picks, a fathom's
+     Current, a Petition. It is a pure function of the saved seed, the label and the counter, and it
+     stores nothing. Use env.random for cosmetics and Stray Lantern timing, which should differ per run. */
+  function hash32(str) {
+    var h = 2166136261 >>> 0, i;
+    for (i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    h ^= h >>> 15; h = Math.imul(h, 2246822507) >>> 0;
+    h ^= h >>> 13; h = Math.imul(h, 3266489909) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
+  }
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function pick(r, list) { return list[Math.floor(r() * list.length)]; }
+  function shuffle(r, list) {
+    var a = list.slice(), i, j, t;
+    for (i = a.length - 1; i > 0; i--) { j = Math.floor(r() * (i + 1)); t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  /* pairs: [[item, weight], ...]. Weights of zero or less are never picked. */
+  function weighted(r, pairs) {
+    var total = 0, i, x;
+    for (i = 0; i < pairs.length; i++) if (pairs[i][1] > 0) total += pairs[i][1];
+    if (total <= 0) return undefined;
+    x = r() * total;
+    for (i = 0; i < pairs.length; i++) {
+      if (pairs[i][1] <= 0) continue;
+      if (x < pairs[i][1]) return pairs[i][0];
+      x -= pairs[i][1];
+    }
+    for (i = pairs.length - 1; i >= 0; i--) if (pairs[i][1] > 0) return pairs[i][0];
+  }
 
   /* env: { wallNow, monoNow, random, say, storage: { get, set, remove } } */
   function create(D, env) {
-    var wallNow = env.wallNow, monoNow = env.monoNow, say = env.say, store = env.storage;
+    var wallNow = env.wallNow, monoNow = env.monoNow, store = env.storage;
+    var lastSayAt = -1e9;     // monotonic ms of the latest Whisper, so chatter never crowds one
+    function say(msg, kind) { lastSayAt = monoNow(); env.say(msg, kind); }
 
     var S;                    // saved state
     var C = {};               // derived values, rebuilt every tick
-    var dirty = { omens: true, codex: true, upgs: false };   // the interface clears these after redrawing
+    var dirty = { omens: true, codex: true, upgs: false };
+    /* Things the interface may want to tell the player about (a toast). The rules only record them. The
+       interface drains the list; it never grows past 60 if nobody is listening. */
+    var events = [];
+    function emit(type, data) { if (events.length < 60) { data = data || {}; data.type = type; events.push(data); } }
+    function drainEvents() { var e = events; events = []; return e; }   // the interface clears these after redrawing
 
     /* ---------- state ---------- */
 
-    function fresh() {
+    function newSeed() { return Math.floor(env.random() * 4294967296) >>> 0; }
+
+    /* seed: pass one to skip drawing a random number (adopt does, so loading never consumes env.random). */
+    function fresh(seed) {
       return {
-        v: 2,
+        v: 3,
+        seed: seed === undefined ? newSeed() : seed,   // fixes the daily and per-fathom rolls, see rng()
+        born: wallNow(),      // wall time this realm began. Informational only, nothing may depend on it
         gloom: 0, runGloom: 0, totalGloom: 0,
-        echoes: 0, echoesTotal: 0,
+        echoes: 0, echoesTotal: 0, runEchoes: 0, ritesKept: {},
         glass: 0, glassTotal: 0, unlightings: 0,
         den: {}, upg: {}, rites: {}, perks: {}, omens: {}, codex: {},
-        codexUnread: 0,
+        codexSeq: 0,          // how many pages have ever been unlocked: each page stores the number it got
+        codexNew: {},         // pages unlocked and not yet opened
         shaft: 1, shaftTop: 1, bestShaft: 0, shaftHp: shaftMaxHp(1), bossTime: BOSS_TIME, march: 0,
         autoAdvance: true, regroup: false, sealed: 0,
-        clicks: 0, lanterns: 0, played: 0, runTime: 0,
+        // The sky: phases of the day seen, calendar events seen, eclipses witnessed. The clock cannot be trusted, so none of
+        // this can be audited; each reward is bounded instead (a phase is a bonus of similar size, eclipses cap at 10).
+        sky: { phases: { night: 0, dawn: 0, day: 0, dusk: 0 }, seen: { moonless: 0, lidless: 0, longestnight: 0, longestday: 0, balance: 0 }, eclipses: {} },   // the phases of the day the player has been present for
+        lit: { teeth: { on: 0, cd: 0 }, breath: { on: 0, cd: 0 }, undertow: { on: 0, cd: 0 } },   // Litanies: seconds of effect and of cooldown left
+        litanyUses: 0,
+        pane: { seen: {}, choice: '' },    // lights the player has been shown, and the ending chosen. Lights themselves are derived.
+        runBest: 0, peak: { rate: 0, at: 0 }, fathomVow: '',   // deepest shaft sealed this fathom; best Nightglass per hour seen this fathom and when; the vow taken for it
+        vow: '', vowGoal: 0, keepings: {},     // the vow taken for this fathom, the Sunshaft that keeps it, and the vows kept
+        current: 'still', currentChoices: 0,   // the grain of this fathom, and how many times one was chosen
+        fathoms: [],                            // up to 20 records of past fathoms, newest last
+        auto: { den: {}, rite: {} },   // toggles for The Usher and The Precentor; they grant nothing without the perk
+        snd: { lines: [], done: 0, dry: { shallows: 0, shelf: 0, trench: 0 } },   // Soundings: lines out (seconds left), draws made, draws since a new relic per depth
+        relics: {},
+        pet: { day: 0, count: 0, playedAt: 0, active: '' },   // petitions: last granted local day, the Vigil (days granted), play time at the grant, the one in effect
+        clicks: 0, lanterns: 0, lanternSpawns: 0, streak: 0, bestStreak: 0, processions: 0, wardenLamps: 0, played: 0, runTime: 0,
         buffs: { hush: 0, teeth: 0 },
         lanternIn: 75,
-        unlocked: { shafts: false, rites: false, unlight: false },
+        unlocked: { shafts: false, rites: false, unlight: false, soundings: false, vows: false, pane: false },
         ended: false,
         seen: wallNow(),      // latest wall-clock time this realm has observed
         debt: 0,              // seconds of away time forfeited after the clock ran backwards
         marks: 0,             // times the save failed its seal or its audit
-        opts: { sci: false, motion: true, buy: 1 },
-        tab: 'den'
+        exportedAt: 0,        // wall ms of the last export (copy or file); 0 = never
+        remindedAt: 0,        // wall ms the backup reminder was last shown; 0 = never
+        opts: { sci: false, motion: !(env.prefersReducedMotion && env.prefersReducedMotion()), buy: 1, keys: true, chatter: true, buyRite: 1, vol: 40, amb: true, sfx: true, haptic: true },
+        nav: { dest: 'seat', page: { realm: 'den', host: 'shaft', deep: 'unl', ledger: 'omen' } }   // where the player was, per destination
       };
     }
 
@@ -63,8 +139,10 @@
     /* Builds a state from untrusted data by copying known fields only. Nothing is merged,
        so keys such as __proto__ or constructor in a crafted save are never touched. */
     function adopt(o) {
-      var s = fresh(), now = wallNow();
-      if (!o || typeof o !== 'object') return s;
+      var s = fresh(0), now = wallNow();
+      if (!o || typeof o !== 'object') { s.seed = newSeed(); return s; }
+      s.seed = own(o, 'seed') ? int(o, 'seed', 0, 4294967295, 0) : newSeed();
+      s.born = num(o, 'born', 0, now, now);
       s.totalGloom = num(o, 'totalGloom', 0, BIG, 0);
       s.runGloom = num(o, 'runGloom', 0, BIG, 0);
       s.gloom = num(o, 'gloom', 0, BIG, 0);
@@ -76,35 +154,118 @@
       D.DENIZENS.forEach(function (d) { var n = int(o.den, d.id, 0, 5000, 0); if (n) s.den[d.id] = n; });
       UPGS.forEach(function (u) { if (flag(o.upg, u.id)) s.upg[u.id] = 1; });
       D.RITES.forEach(function (r) { var n = int(o.rites, r.id, 0, r.max || 400, 0); if (n) s.rites[r.id] = n; });
+      // Echoes gained this fathom, and the Rite levels carried in by Rites Remembered. A save from
+      // before these fields existed cannot say, so its Rites are treated as carried in and tracked from here.
+      if (own(o, 'runEchoes')) {
+        s.runEchoes = num(o, 'runEchoes', 0, s.echoesTotal, 0);
+        D.RITES.forEach(function (r) { var n = int(o.ritesKept, r.id, 0, r.max || 400, 0); if (n) s.ritesKept[r.id] = n; });
+      } else if (s.unlightings > 0) {
+        s.runEchoes = s.echoes;
+        for (var rk in s.rites) s.ritesKept[rk] = s.rites[rk];
+      } else {
+        s.runEchoes = s.echoesTotal;
+      }
       D.PERKS.forEach(function (p) { if (flag(o.perks, p.id)) s.perks[p.id] = 1; });
       OMENS.forEach(function (m) { if (flag(o.omens, m.id)) s.omens[m.id] = 1; });
-      D.CODEX.forEach(function (c) { if (flag(o.codex, c.id)) s.codex[c.id] = 1; });
-      s.codexUnread = int(o, 'codexUnread', 0, 99, 0);
+      // codex[id] is the order the page was learned in. A save from before that held 1 for every page:
+      // ties keep table order, and pages unlocked from here on number above the highest found.
+      var seqMax = 0;
+      D.CODEX.forEach(function (c) { var n = int(o.codex, c.id, 0, 9999, 0); if (n) { s.codex[c.id] = n; if (n > seqMax) seqMax = n; } });
+      s.codexSeq = Math.max(seqMax, int(o, 'codexSeq', 0, 9999, 0));
+      D.CODEX.forEach(function (c) { if (s.codex[c.id] && flag(o.codexNew, c.id)) s.codexNew[c.id] = 1; });
       s.bestShaft = int(o, 'bestShaft', 0, 1e5, 0);
       s.shaftTop = int(o, 'shaftTop', 1, s.bestShaft + 1, 1);
       s.shaft = int(o, 'shaft', 1, s.shaftTop, 1);
       s.shaftHp = num(o, 'shaftHp', 0, shaftMaxHp(s.shaft), 0) || shaftMaxHp(s.shaft);
-      s.bossTime = num(o, 'bossTime', 0, BOSS_TIME, BOSS_TIME);
+      s.bossTime = num(o, 'bossTime', 0, 600, BOSS_TIME);
       s.march = num(o, 'march', 0, MARCH, 0);
       s.autoAdvance = !own(o, 'autoAdvance') || o.autoAdvance !== false;
       s.regroup = own(o, 'regroup') && o.regroup === true;
       s.sealed = num(o, 'sealed', 0, BIG, 0);
+      D.LITANIES.forEach(function (l) {
+        s.lit[l.id].on = num(o.lit && o.lit[l.id], 'on', 0, l.on, 0);
+        s.lit[l.id].cd = num(o.lit && o.lit[l.id], 'cd', 0, l.cd, 0);
+      });
+      s.litanyUses = int(o, 'litanyUses', 0, BIG, 0);
+      // The current is only ever set by an Unlighting. Unknown ids, and any save that has not let go yet, read as Still.
+      s.current = own(o, 'current') && s.unlightings > 0 && D.CURRENTS.some(function (c) { return c.id === o.current; }) ? o.current : 'still';
+      s.currentChoices = int(o, 'currentChoices', 0, s.unlightings, 0);
+      D.VOWS.forEach(function (v) { if (flag(o.keepings, v.id)) s.keepings[v.id] = 1; });
+      s.vow = own(o, 'vow') && s.unlightings >= 3 && D.VOWS.some(function (v) { return v.id === o.vow; }) ? o.vow : '';
+      s.vowGoal = s.vow ? int(o, 'vowGoal', 0, 1e5, 0) : 0;
+      s.runBest = int(o, 'runBest', 0, 1e5, 0);
+      s.peak.rate = num(o.peak, 'rate', 0, BIG, 0);
+      s.peak.at = num(o.peak, 'at', 0, BIG, 0);
+      s.fathomVow = own(o, 'fathomVow') && D.VOWS.some(function (v) { return v.id === o.fathomVow; }) ? o.fathomVow : '';
+      if (Array.isArray(o.fathoms)) o.fathoms.slice(-20).forEach(function (f) {
+        if (!f || typeof f !== 'object') return;
+        var cur = D.CURRENTS.some(function (c) { return c.id === f.current; }) ? f.current : 'still';
+        var fv = D.VOWS.some(function (v) { return v.id === f.vow; }) ? f.vow : '';
+        s.fathoms.push({ n: int(f, 'n', 0, 1e6, 0), current: cur, vow: fv, kept: !!fv && f.kept === true, sec: num(f, 'sec', 0, BIG, 0), glass: int(f, 'glass', 0, BIG, 0), best: int(f, 'best', 0, 1e5, 0) });
+      });
+      // Soundings: known depths only, as many lines as the perk allows, time left clamped to the depth's length.
+      var maxLines = s.perks.twolines ? 2 : 1;
+      if (o.snd && Array.isArray(o.snd.lines)) o.snd.lines.slice(0, maxLines).forEach(function (l) {
+        var d = l && typeof l === 'object' ? sdepth(l.id) : null;
+        if (d) s.snd.lines.push({ id: d.id, left: num(l, 'left', 0, d.hours * 3600, 0) });
+      });
+      s.snd.done = int(o.snd, 'done', 0, BIG, 0);
+      D.SOUNDINGS.depths.forEach(function (d) { s.snd.dry[d.id] = int(o.snd && o.snd.dry, d.id, 0, 1e4, 0); });
+      D.RELICS.forEach(function (r) { if (flag(o.relics, r.id)) s.relics[r.id] = 1; });
+      s.pet.day = int(o.pet, 'day', 0, dayIndex(now) + 1, 0);
+      s.pet.count = int(o.pet, 'count', 0, 1e5, 0);
+      s.pet.playedAt = num(o.pet, 'playedAt', 0, num(o, 'played', 0, BIG, 0), 0);
+      s.pet.active = own(o.pet, 'active') && D.PETITIONS.list.some(function (p) { return p.id === o.pet.active; }) ? o.pet.active : '';
+      D.SKY.PHASES.forEach(function (p) { s.sky.phases[p.id] = o.sky && flag(o.sky.phases, p.id) ? 1 : 0; });
+      Object.keys(s.sky.seen).forEach(function (k) { s.sky.seen[k] = o.sky && flag(o.sky.seen, k) ? 1 : 0; });
+      D.SKY.ECLIPSES.forEach(function (x) { if (o.sky && flag(o.sky.eclipses, x.id)) s.sky.eclipses[x.id] = 1; });
       s.played = num(o, 'played', 0, BIG, 0);
       s.runTime = num(o, 'runTime', 0, s.played, 0);
       s.clicks = int(o, 'clicks', 0, BIG, 0);
       s.lanterns = int(o, 'lanterns', 0, BIG, 0);
-      s.buffs.hush = num(o.buffs, 'hush', 0, 80, 0);
-      s.buffs.teeth = num(o.buffs, 'teeth', 0, 80, 0);
+      s.lanternSpawns = int(o, 'lanternSpawns', 0, BIG, 0);
+      s.streak = int(o, 'streak', 0, 1e6, 0);
+      s.bestStreak = int(o, 'bestStreak', 0, 1e6, 0);
+      s.processions = int(o, 'processions', 0, BIG, 0);
+      s.wardenLamps = int(o, 'wardenLamps', 0, BIG, 0);
+      s.buffs.hush = num(o.buffs, 'hush', 0, 200, 0);
+      s.buffs.teeth = num(o.buffs, 'teeth', 0, 200, 0);
       s.lanternIn = num(o, 'lanternIn', 0, 150, 75);
-      ['shafts', 'rites', 'unlight'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
+      ['shafts', 'rites', 'unlight', 'soundings', 'vows', 'pane'].forEach(function (k) { s.unlocked[k] = own(o.unlocked, k) && o.unlocked[k] === true; });
       s.ended = own(o, 'ended') && o.ended === true && s.bestShaft >= FINAL_SHAFT;
       s.seen = num(o, 'seen', 0, BIG, num(o, 'last', 0, now, now));   // `last` is the v1 field
       s.debt = num(o, 'debt', 0, 86400, 0);
       s.marks = int(o, 'marks', 0, 1e6, 0);
+      s.exportedAt = num(o, 'exportedAt', 0, now, 0);
+      s.remindedAt = num(o, 'remindedAt', 0, now, 0);
       s.opts.sci = own(o.opts, 'sci') && o.opts.sci === true;
       s.opts.motion = !own(o.opts, 'motion') || o.opts.motion !== false;
+      s.opts.keys = !own(o.opts, 'keys') || o.opts.keys !== false;
+      s.opts.chatter = !own(o.opts, 'chatter') || o.opts.chatter !== false;
+      s.opts.vol = int(o.opts, 'vol', 0, 100, 40);
+      s.opts.amb = !own(o.opts, 'amb') || o.opts.amb !== false;
+      s.opts.sfx = !own(o.opts, 'sfx') || o.opts.sfx !== false;
+      s.opts.haptic = !own(o.opts, 'haptic') || o.opts.haptic !== false;
+      if (own(o.opts, 'buyRite') && [1, 10, 25, 'max'].indexOf(o.opts.buyRite) >= 0) s.opts.buyRite = o.opts.buyRite;
+      D.DENIZENS.forEach(function (d) { if (o.auto && flag(o.auto.den, d.id)) s.auto.den[d.id] = true; });
+      D.RITES.forEach(function (r) { if (o.auto && flag(o.auto.rite, r.id)) s.auto.rite[r.id] = true; });
       if (own(o.opts, 'buy') && [1, 10, 25, 'max'].indexOf(o.opts.buy) >= 0) s.opts.buy = o.opts.buy;
-      if (own(o, 'tab') && TAB_IDS.indexOf(o.tab) >= 0) s.tab = o.tab;
+      if (own(o, 'nav') && o.nav !== null && typeof o.nav === 'object') {
+        // Page ids are free text of a safe shape: later pages are registered by the interface, not known here.
+        if (own(o.nav, 'dest') && NAV_DESTS.indexOf(o.nav.dest) >= 0) s.nav.dest = o.nav.dest;
+        ['realm', 'host', 'deep', 'ledger'].forEach(function (d) {
+          var v = own(o.nav, 'page') ? o.nav.page[d] : undefined;
+          if (own(o.nav, 'page') && own(o.nav.page, d) && typeof v === 'string' && /^[a-z][a-z0-9]{0,15}$/.test(v)) s.nav.page[d] = v;
+        });
+      } else if (own(o, 'tab') && own(OLD_TABS, o.tab)) {
+        s.nav.dest = OLD_TABS[o.tab][0];
+        s.nav.page[OLD_TABS[o.tab][0]] = OLD_TABS[o.tab][1];
+      }
+      // The Pane's lights are derived. Its saved fields are only what was shown and the choice, and a choice
+      // is only believed while every light is lit.
+      D.PANE.lights.forEach(function (l) { if (o.pane && flag(o.pane.seen, l.id)) s.pane.seen[l.id] = 1; });
+      var c = own(o.pane, 'choice') ? o.pane.choice : '';
+      s.pane.choice = (c === 'returned' || c === 'kept') && paneCount(s) === D.PANE.lights.length ? c : '';
       if (audit(s) > 0) s.marks++;
       return s;
     }
@@ -147,6 +308,10 @@
       if (s.gloom > s.runGloom) { s.gloom = s.runGloom; fixes++; }
       if (s.echoes > s.echoesTotal) { s.echoes = s.echoesTotal; fixes++; }
 
+      // The Bell is only found past the First Lamp, and the Patient Dark only sits on the Unsleeping setting.
+      if ((s.den.bell || 0) > 0 && s.bestShaft < FINAL_SHAFT) { delete s.den.bell; for (i = 0; i < D.UPG_TIERS.length; i++) delete s.upg['bell_' + i]; fixes++; }
+      if (s.perks.patient && !s.perks.unsleeping) { delete s.perks.patient; fixes++; }
+
       // A denizen working needs the denizens it is for.
       var stripped = false;
       D.DENIZENS.forEach(function (d) {
@@ -158,10 +323,10 @@
 
       // Everything bound and built this fathom was paid for out of this fathom's Gloom.
       function spentGloom() {
-        var disc = s.perks.thrift ? 0.9 : 1, sum = 0;
+        var sum = 0, free = startingDenizens(s);
         D.DENIZENS.forEach(function (d) {
-          var free = s.perks.absence ? (d.id === 'gleaner' ? 15 : d.id === 'scribe' ? 5 : 0) : 0, n = s.den[d.id] || 0;
-          if (n > free) sum += d.cost * disc * (Math.pow(GROWTH, n) - Math.pow(GROWTH, free)) / (GROWTH - 1);
+          var f = free[d.id] || 0, n = s.den[d.id] || 0;
+          if (n > f) sum += denCost(d, f, n - f, s);
         });
         UPGS.forEach(function (u) { if (s.upg[u.id]) sum += u.cost; });
         return sum;
@@ -180,18 +345,52 @@
         s.gloom = Math.max(0, Math.min(s.gloom, s.runGloom - spent));
       }
 
-      // Before the first Unlighting, every Rite level was paid for in Echoes.
-      if (s.unlightings === 0) {
-        var e = 0;
-        D.RITES.forEach(function (r) { e += r.base * (Math.pow(r.g, s.rites[r.id] || 0) - 1) / (r.g - 1); });
-        if (e > (s.echoesTotal - s.echoes) * 1.01 + 1) { s.rites = {}; fixes++; }
+      // Rite levels above the ones carried in were paid for in this fathom's Echoes.
+      if (s.echoes > s.runEchoes) { s.echoes = s.runEchoes; fixes++; }
+      var keptBad = false;
+      D.RITES.forEach(function (r) {
+        var have = s.rites[r.id] || 0;
+        if ((s.ritesKept[r.id] || 0) > have) { if (have) s.ritesKept[r.id] = have; else delete s.ritesKept[r.id]; keptBad = true; }
+      });
+      if (keptBad) fixes++;
+      var e = 0;
+      D.RITES.forEach(function (r) { for (var l = s.ritesKept[r.id] || 0; l < (s.rites[r.id] || 0); l++) e += riteCost(r, l, s); });
+      if (e > (s.runEchoes - s.echoes) * 1.01 + 1) {
+        var back = {};
+        for (var bk in s.ritesKept) back[bk] = s.ritesKept[bk];
+        s.rites = back; fixes++;
       }
 
       // Hands and lanterns have physical limits.
       var maxClicks = Math.floor(s.played * CLICK_CAP + 100);
       if (s.clicks > maxClicks) { s.clicks = maxClicks; fixes++; }
-      var maxLanterns = Math.floor(s.played / 35 + 5);
+      var maxLanterns = Math.floor(s.played / 20 + 5);
       if (s.lanterns > maxLanterns) { s.lanterns = maxLanterns; fixes++; }
+      // The Nightglass in the history cannot add up to more than was ever earned: the oldest records go first.
+      var gsum = 0;
+      s.fathoms.forEach(function (f) { gsum += f.glass; });
+      while (s.fathoms.length && gsum > s.glassTotal) { gsum -= s.fathoms.shift().glass; fixes++; }
+      // A vow is kept by sealing a shaft in the fathom it was taken: three Unlightings to unlock, one to take it.
+      var vk = D.VOWS.filter(function (v) { return s.keepings[v.id]; }), vcut = false;
+      for (i = vk.length - 1; i >= 0; i--) {
+        if (s.unlightings < 4 || vk.length > s.unlightings - 3 || vk[i].goal > s.bestShaft) { delete s.keepings[vk[i].id]; vk.splice(i, 1); vcut = true; }
+      }
+      if (vcut) fixes++;
+      // A Sounding takes real time, so draws cannot outnumber the hours played; every relic came from a draw; the Trench needs a fathom let go.
+      if (s.snd.done > s.played / 3600 + 2) { s.snd.done = Math.floor(s.played / 3600 + 2); fixes++; }
+      var held = D.RELICS.filter(function (r) { return s.relics[r.id]; }), cut = false;
+      for (i = held.length - 1; i >= 0; i--) {
+        if (held.length > s.snd.done || ((held[i].set === 'queen' || held[i].set === 'bed') && s.unlightings < 1)) { delete s.relics[held[i].id]; held.splice(i, 1); cut = true; }
+      }
+      if (cut) fixes++;
+      // One grant a day and one per six hours of counted play, so the Vigil cannot outrun the time spent.
+      if (s.pet.count > s.played / D.PETITIONS.playedGap + 1) { s.pet.count = Math.floor(s.played / D.PETITIONS.playedGap + 1); fixes++; }
+      // Streaks, Processions and Warden's Lamps are counted out of lanterns snuffed.
+      if (s.bestStreak > s.lanterns) { s.bestStreak = s.lanterns; fixes++; }
+      if (s.streak > s.bestStreak) { s.streak = s.bestStreak; fixes++; }
+      if (s.processions > s.lanterns / D.LANTERNS.procession.count) { s.processions = Math.floor(s.lanterns / D.LANTERNS.procession.count); fixes++; }
+      if (s.wardenLamps > s.lanterns) { s.wardenLamps = s.lanterns; fixes++; }
+      if (s.lanternSpawns < s.lanterns - 4 * s.processions) { s.lanternSpawns = Math.max(0, s.lanterns - 4 * s.processions); fixes++; }
       return fixes;
     }
 
@@ -233,9 +432,92 @@
 
     var halted = false, saveWarned = false;
 
+    /* ---------- backups ----------
+       Three extra sealed copies, each written inside its own try so that a full disk can never stop
+       the main save. daily: the last save of the previous local day. unlight: the realm just before an
+       Unlighting. import: the realm just before an import, a restore or an erase replaced it. */
+    var BAK = { daily: KEY + '.bak.daily', unlight: KEY + '.bak.unlight', 'import': KEY + '.bak.import' };
+    var BAK_SLOTS = ['daily', 'unlight', 'import'];
+    var SET_ASIDE = { rejected: KEY + '.rejected', unreadable: KEY + '.unreadable' };
+
+    function writeBackup(slot, text) { try { store.set(BAK[slot], text); } catch (e) {} }
+    function dayOf(ms) { var d = new Date(ms); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+    var backupDay = 0;        // the local day the daily slot was last rotated for
+
+    function rotateDaily() {
+      var today = dayOf(wallNow());
+      if (today === backupDay) return;
+      var prev = null;
+      try { prev = store.get(KEY); } catch (e) {}
+      if (prev) writeBackup('daily', prev);
+      backupDay = today;
+    }
+
+    var bakMemo = {};
+    function backupInfo(slot) {
+      var raw = null;
+      try { raw = store.get(BAK[slot]); } catch (e) {}
+      if (!raw) return null;
+      if (bakMemo[slot] && bakMemo[slot].raw === raw) return bakMemo[slot].info;
+      var info = null;
+      try {
+        var u = unpack(raw);
+        if (u.sealed) { var t = adopt(u.data); info = { slot: slot, savedAt: t.seen, fathom: t.unlightings + 1, gloom: t.totalGloom, played: t.played }; }
+      } catch (e) {}
+      bakMemo[slot] = { raw: raw, info: info };
+      return info;
+    }
+    /* The backups that exist and are sealed, read into temporary states (never into S). */
+    function listBackups() {
+      var out = [];
+      BAK_SLOTS.forEach(function (slot) { var i = backupInfo(slot); if (i) out.push(i); });
+      return out;
+    }
+
+    /* Puts a backup in place of the realm. The realm it replaces goes to the import slot first. */
+    function restoreBackup(slot) {
+      var raw = null, u;
+      try { raw = BAK[slot] ? store.get(BAK[slot]) : null; } catch (e) {}
+      if (!raw) return { ok: false, error: 'There is no such backup.' };
+      try { u = unpack(raw); } catch (e) { return { ok: false, error: 'That backup could not be read.' }; }
+      if (!u.sealed) return { ok: false, error: 'That backup has been altered. The Scribes refuse it.' };
+      writeBackup('import', pack());
+      S = adopt(u.data);
+      pruneOmens();
+      recalc();
+      backupDay = dayOf(wallNow());
+      if (!save()) return { ok: false, error: 'This browser refused to store the save.' };
+      return { ok: true };
+    }
+
+    /* Copies set aside because they failed their seal or could not be read. They can be exported or
+       discarded, never restored. */
+    function listSetAside() {
+      var out = [];
+      Object.keys(SET_ASIDE).forEach(function (k) {
+        var raw = null;
+        try { raw = store.get(SET_ASIDE[k]); } catch (e) {}
+        if (raw) out.push({ which: k, text: raw });
+      });
+      return out;
+    }
+    function discardSetAside(which) { if (SET_ASIDE[which]) { try { store.remove(SET_ASIDE[which]); } catch (e) {} } }
+
+    /* ---------- keeping a copy ---------- */
+    var REMIND_PLAYED = 7200, STALE_EXPORT_MS = 14 * 86400000, REMIND_EVERY_MS = 7 * 86400000;
+    /* True when the realm lives only in this browser and has not been exported lately. */
+    function backupStale(played, installed, exportedAt, now) {
+      return played > REMIND_PLAYED && !installed && (!exportedAt || now - exportedAt > STALE_EXPORT_MS);
+    }
+    function reminderDue(played, installed, exportedAt, remindedAt, now) {
+      return backupStale(played, installed, exportedAt, now) && (!remindedAt || now - remindedAt > REMIND_EVERY_MS);
+    }
+    function markExported() { S.exportedAt = wallNow(); }
+    function markReminded() { S.remindedAt = wallNow(); }
+
     function save() {
       if (halted) return false;
-      try { store.set(KEY, pack()); return true; }
+      try { rotateDaily(); store.set(KEY, pack()); return true; }
       catch (e) {
         if (!saveWarned) { saveWarned = true; say('This browser is refusing to store the save. Export it from the Realm tab to keep your progress.'); }
         return false;
@@ -261,10 +543,37 @@
           note = 'The saved realm could not be read. A new one begins.';
         }
       } else if (legacy) {
-        try { S = adopt(JSON.parse(legacy)); store.remove(OLD_KEY); } catch (e) { S = fresh(); }
+        // The v1 save was never sealed, so it is the one input nothing vouches for. It is size-limited,
+        // marked, rewritten as a sealed v2 save at once, and no longer read after LEGACY_UNTIL.
+        if (wallNow() > LEGACY_UNTIL) {
+          try { store.set(OLD_KEY + '.retired', legacy.slice(0, MAX_SAVE)); store.remove(OLD_KEY); } catch (e) {}
+        } else if (legacy.length > MAX_SAVE) {
+          try { store.set(OLD_KEY + '.unreadable', legacy.slice(0, MAX_SAVE)); store.remove(OLD_KEY); } catch (e) {}
+          note = 'An older realm was found but it was too large to read. A new one begins.';
+        } else {
+          try {
+            S = adopt(JSON.parse(legacy));
+            S.marks = Math.max(S.marks, 1);
+            note = 'An older realm was found and carried over. The Scribes have noted that it arrived unsealed.';
+            pruneOmens();
+            recalc();
+            if (save()) store.remove(OLD_KEY);
+          } catch (e) { S = fresh(); }
+        }
       }
       pruneOmens();
+      recalc();
+      backupDay = dayOf(S.seen);
       return { note: note };
+    }
+
+    /* What the interface should do about a storage event from another window: 'taken' when another
+       window is saving this realm, 'erased' when the saved realm was removed (or all storage was
+       cleared), null for anything that is not about this realm. Pure, so it can be tested. */
+    function storageAction(key, newValue) {
+      if (key === null) return 'erased';
+      if (key !== KEY) return null;
+      return newValue === null ? 'erased' : 'taken';
     }
 
     function exportText() { return pack(); }
@@ -274,19 +583,23 @@
       var u;
       try { u = unpack(str); } catch (e) { return { ok: false, error: 'That text is not a Dark Realm save.' }; }
       if (!u.sealed) return { ok: false, error: 'That save has been altered since it was exported. The Scribes refuse it.' };
+      writeBackup('import', pack());
       S = adopt(u.data);
       pruneOmens();
+      recalc();
+      backupDay = dayOf(wallNow());
       if (!save()) return { ok: false, error: 'This browser refused to store the save.' };
       return { ok: true };
     }
 
     function erase() {
+      if (S) writeBackup('import', pack());
       try { store.remove(KEY); store.remove(OLD_KEY); } catch (e) {}
     }
 
     /* ---------- formatting ---------- */
 
-    var SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    var SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
 
     function fmt(n) {
       if (!isFinite(n)) return '∞';
@@ -343,32 +656,76 @@
 
     var OMENS = [];
     /* mono: the condition reads a lifetime counter that never falls, so it can be re-verified on load. */
-    function omenSet(list, descFn, condFn, mono) {
+    /* set: the heading the Omens page groups them under. prog(x): how far along, 0 to 1, for a countable omen. */
+    function omenSet(set, list, descFn, condFn, mono, prog) {
       list.forEach(function (p) {
-        OMENS.push({ id: 'o' + OMENS.length, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); }, mono: !!mono });
+        OMENS.push({ id: 'o' + OMENS.length, set: set, name: p[1], desc: descFn(p[0]), cond: function () { return condFn(p[0]); }, mono: !!mono,
+          prog: function () { return Math.min(1, prog(p[0])); } });
       });
     }
-    omenSet([[1e3, 'A Puddle of Night'], [1e6, 'A Cellar of Night'], [1e9, 'A Lake of Night'], [1e12, 'A Sea of Night'],
+    omenSet('Gloom gathered', [[1e3, 'A Puddle of Night'], [1e6, 'A Cellar of Night'], [1e9, 'A Lake of Night'], [1e12, 'A Sea of Night'],
       [1e15, 'A Sky of Night'], [1e18, 'An Age of Night'], [1e21, 'Night Without Edges'], [1e24, 'Night Without End']],
-      function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; }, true);
-    omenSet([[10, 'A Household'], [100, 'A Court'], [500, 'A City Below'], [1000, 'A Nation Below'], [2000, 'A World Below']],
-      function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; });
-    omenSet([[1, 'Full Attendance'], [50, 'Standing Room Only']],
+      function (x) { return 'Gather ' + fmtPlain(x) + ' Gloom in all.'; }, function (x) { return S.totalGloom >= x; }, true, function (x) { return S.totalGloom / x; });
+    omenSet('Denizens bound at once', [[10, 'A Household'], [100, 'A Court'], [500, 'A City Below'], [1000, 'A Nation Below'], [2000, 'A World Below']],
+      function (x) { return 'Have ' + x + ' denizens bound at once.'; }, function (x) { return totalDenizens() >= x; }, false, function (x) { return totalDenizens() / x; });
+    omenSet('Full attendance', [[1, 'Full Attendance'], [50, 'Standing Room Only']],
       function (x) { return 'Have at least ' + x + ' of every denizen.'; },
-      function (x) { return D.DENIZENS.every(function (d) { return cnt(d.id) >= x; }); });
-    omenSet([[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
+      function (x) { return D.DENIZENS.every(function (d) { return !denLive(d) || cnt(d.id) >= x; }); }, false, function (x) { var m = Infinity; D.DENIZENS.forEach(function (d) { if (denLive(d)) m = Math.min(m, cnt(d.id)); }); return m / x; });
+    omenSet('Sunshafts sealed', [[10, 'First Stitch'], [25, 'Seamstress'], [50, 'Half Dark'], [75, 'Longer Chains'], [100, 'Noon, Cancelled'],
       [125, 'No Light Left Standing'], [150, 'The Last Shaft']],
-      function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true);
-    omenSet([[100, 'Wet Hands'], [1000, 'Cold Hands'], [10000, 'No Hands Left']],
-      function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; }, true);
-    omenSet([[1, 'Snuffer'], [25, 'Wick-Thief'], [100, 'The Moths\' Revenge']],
-      function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; }, true);
-    omenSet([[1, 'Let Go'], [5, 'Practised Falling'], [10, 'Home Is Down']],
-      function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; }, true);
-    omenSet([[10, 'Observant'], [50, 'Devout']],
-      function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; });
-    omenSet([[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
-      function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true);
+      function (x) { return 'Seal Sunshaft ' + x + '.'; }, function (x) { return S.bestShaft >= x; }, true, function (x) { return S.bestShaft / x; });
+    omenSet('Gathering by hand', [[100, 'Wet Hands'], [1000, 'Cold Hands'], [10000, 'No Hands Left']],
+      function (x) { return 'Gather by hand ' + x + ' times.'; }, function (x) { return S.clicks >= x; }, true, function (x) { return S.clicks / x; });
+    omenSet('Stray Lanterns snuffed', [[1, 'Snuffer'], [25, 'Wick-Thief'], [100, 'The Moths\' Revenge']],
+      function (x) { return 'Snuff ' + x + (x === 1 ? ' Stray Lantern.' : ' Stray Lanterns.'); }, function (x) { return S.lanterns >= x; }, true, function (x) { return S.lanterns / x; });
+    omenSet('Unlightings', [[1, 'Let Go'], [5, 'Practised Falling'], [10, 'Home Is Down']],
+      function (x) { return 'Perform the Unlighting ' + (x === 1 ? 'once.' : x + ' times.'); }, function (x) { return S.unlightings >= x; }, true, function (x) { return S.unlightings / x; });
+    omenSet('Rite levels held', [[10, 'Observant'], [50, 'Devout']],
+      function (x) { return 'Hold ' + x + ' Rite levels at once.'; }, function (x) { return totalRites() >= x; }, false, function (x) { return totalRites() / x; });
+    omenSet('Echoes recovered', [[1e3, 'A Thousand Small Habits'], [1e6, 'Everyone Who Ever Held a Cup']],
+      function (x) { return 'Recover ' + fmtPlain(x) + ' Echoes in all.'; }, function (x) { return S.echoesTotal >= x; }, true, function (x) { return S.echoesTotal / x; });
+
+    // Added after the first sets so no earlier omen id moves. Grouped with the lantern omens by set name.
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'A Line of Small Nights', desc: 'Snuff a whole Procession.', mono: true,
+      cond: function () { return S.processions >= 1; }, prog: function () { return Math.min(1, S.processions); } });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'Unbroken', desc: 'Snuff 10 lanterns in a row.', mono: true,
+      cond: function () { return S.bestStreak >= 10; }, prog: function () { return Math.min(1, S.bestStreak / 10); } });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Stray Lanterns snuffed', name: 'Borrowed Light', desc: 'Snuff a Warden\'s Lamp.', mono: true,
+      cond: function () { return S.wardenLamps >= 1; }, prog: function () { return Math.min(1, S.wardenLamps); } });
+
+    [['night', 'Kept the Night', 'Be on the seat while it is night above.'], ['dawn', 'Saw Them Wake', 'Be on the seat at dawn.'],
+      ['day', 'Worked the Day Shift', 'Be on the seat in the day.'], ['dusk', 'Saw Them Sleep', 'Be on the seat at dusk.']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: p[1], desc: p[2], mono: false,
+        cond: function () { return !!S.sky.phases[p[0]]; }, prog: function () { return S.sky.phases[p[0]] ? 1 : 0; } });
+    });
+
+    [['moonless', 'Nothing in the Sky', 'See a Moonless Night.'], ['lidless', 'A Lamp Nobody Lit', 'See a Lidless Moon.'],
+      ['longestnight', 'The Holiday', 'Be on the seat on the Longest Night.'], ['longestday', 'Sun, Crossed Out', 'Be on the seat on the Longest Day.']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: p[1], desc: p[2], mono: false,
+        cond: function () { return !!S.sky.seen[p[0]]; }, prog: function () { return S.sky.seen[p[0]] ? 1 : 0; } });
+    });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'The sky above', name: 'Sung Through', desc: 'Be on the seat during an eclipse.', mono: false,
+      cond: function () { return eclipseCount() >= 1; }, prog: function () { return eclipseCount() ? 1 : 0; } });
+
+    D.PETITIONS.milestones.forEach(function (m, i) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'Vigils kept', name: D.PETITIONS.names[i], desc: 'Keep ' + m + ' Vigils (days on which you granted a petition).', mono: false,
+        cond: function () { return S.pet.count >= m; }, prog: function () { return S.pet.count / m; } });
+    });
+
+    D.RELIC_SETS.forEach(function (rs) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The Shelves', name: rs.name, desc: 'Find all four relics of ' + rs.name + '.', mono: false,
+        cond: function () { return !!setDone(rs.id); }, prog: function () { return D.RELICS.filter(function (r) { return r.set === rs.id && S.relics[r.id]; }).length / 4; } });
+    });
+
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Vows', name: 'Kept', desc: 'Keep a vow.', mono: true,
+      cond: function () { for (var k in S.keepings) return true; return false; }, prog: function () { for (var k in S.keepings) return 1; return 0; } });
+    OMENS.push({ id: 'o' + OMENS.length, set: 'Vows', name: 'Six Things Set Aside', desc: 'Keep all six vows.', mono: true,
+      cond: function () { var n = 0; for (var k in S.keepings) n++; return n >= 6; }, prog: function () { var n = 0; for (var k in S.keepings) n++; return n / 6; } });
+
+    D.PANE.lights.length && ['returned', 'kept'].forEach(function (ch) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'The Pane', name: D.PANE.endings[ch].omen, desc: 'Choose ' + (ch === 'returned' ? 'to give her the seat.' : 'to keep the chair.') + ' Only one of the two can be earned.', mono: false,
+        cond: function () { return S.pane.choice === ch; }, prog: function () { return S.pane.choice === ch ? 1 : 0; } });
+    });
 
     function fmtPlain(x) {
       var names = { 1e3: 'a thousand', 1e6: 'a million', 1e9: 'a billion', 1e12: 'a trillion', 1e15: 'a quadrillion',
@@ -391,56 +748,343 @@
     function totalRites() { var t = 0; for (var k in S.rites) t += S.rites[k]; return t; }
     function omenCount() { var t = 0; for (var k in S.omens) t++; return t; }
 
-    function costMult() { return perk('thrift') ? 0.9 : 1; }
-    function denCost(d, n, k) {
-      return Math.ceil(d.cost * costMult() * Math.pow(GROWTH, n) * (Math.pow(GROWTH, k) - 1) / (GROWTH - 1));
+    /* Denizens a perk grants at the start of a fathom. The audit uses it to tell what was bought. */
+    function startingDenizens(s) { return s.perks.absence ? { gleaner: 15, scribe: 5 } : {}; }
+
+    /* Cost functions take an optional state so that audit() can price a save it is checking. */
+    function denCost(d, n, k, s) {
+      return Math.ceil(d.cost * modsFor(s || S).cost * Math.pow(GROWTH, n) * (Math.pow(GROWTH, k) - 1) / (GROWTH - 1));
     }
     function maxBuy(d, n) {
-      var base = d.cost * costMult() * Math.pow(GROWTH, n);
+      if (S.vow === 'few' && n >= 50) return 0;
+      var base = d.cost * modsFor(S).cost * Math.pow(GROWTH, n);
       var k = Math.floor(Math.log(S.gloom * (GROWTH - 1) / base + 1) / Math.log(GROWTH));
       while (k > 0 && denCost(d, n, k) > S.gloom) k--;
       return Math.max(0, k);
     }
-    function riteCost(r) { return Math.ceil(r.base * Math.pow(r.g, rl(r.id))); }
+    /* The cost of k more levels from `level`, through the same channel as one level. */
+    function riteCostN(r, level, k, s) {
+      s = s || S;
+      return Math.ceil(r.base * Math.pow(r.g, level) * (Math.pow(r.g, k) - 1) / (r.g - 1) * modsFor(s).riteCost);
+    }
+    function maxRite(r) {
+      var lvl = rl(r.id), room = r.max ? r.max - lvl : 1e6, k = 0;
+      if (room <= 0) return 0;
+      var base = r.base * Math.pow(r.g, lvl) * modsFor(S).riteCost;
+      k = Math.floor(Math.log(S.echoes * (r.g - 1) / base + 1) / Math.log(r.g));
+      k = Math.min(Math.max(0, k), room);
+      while (k > 0 && riteCostN(r, lvl, k) > S.echoes) k--;
+      return k;
+    }
+    function riteCost(r, level, s) {
+      s = s || S;
+      if (level === undefined) level = s.rites[r.id] || 0;
+      return Math.ceil(r.base * Math.pow(r.g, level) * modsFor(s).riteCost);
+    }
 
-    function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n % 10 === 0 ? 6 : 1); }
+    [[175, 'Older Chains'], [200, 'Under the Seat']].forEach(function (p) {
+      OMENS.push({ id: 'o' + OMENS.length, set: 'Sunshafts sealed', name: p[1], desc: 'Seal Sunshaft ' + p[0] + '.', mono: true,
+        cond: function () { return S.bestShaft >= p[0]; }, prog: function () { return Math.min(1, S.bestShaft / p[0]); } });
+    });
+
+    function shaftMaxHp(n) { return 12 * Math.pow(1.25, n - 1) * (n > FINAL_SHAFT ? Math.pow(D.ELDER_GROWTH, n - FINAL_SHAFT) : 1) * (n % 10 === 0 ? 6 : 1); }
     function shaftReward(n) {
-      return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult);
+      return Math.ceil((1 + Math.floor(Math.pow(n, 1.4) / 4)) * (n % 10 === 0 ? 5 : 1) * C.echoMult * (n % 10 === 0 && C.lidless ? 2 : 1));
     }
     function shaftName(n) {
+      if (n > FINAL_SHAFT && n % 10 !== 0) return 'Elder Shaft ' + n;
       if (n % 10 !== 0) return 'Sunshaft ' + n;
       return D.BOSSES[n] || 'Lampwarden of the ' + n + 'th Chain';
     }
-    function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP)); }
-    function awayPace() { return Math.min(1, 0.5 + 0.1 * rl('sleep')); }
-    function awayCapHours() { return perk('unsleeping') ? 24 : 8; }
+    function glassGain() { return Math.floor(Math.pow(S.runGloom / 1e9, GLASS_EXP) * modsFor(S).glass); }
+    function awayPace() { return Math.max(0.1, Math.min(1, 0.5 + awayMods().awayPace)); }
+    function bossMax() { return S.vow === 'chain' ? 20 : Math.max(15, BOSS_TIME + modsFor(S).bossTime); }
+    function awayCapHours() { return perk('patient') && perk('unsleeping') ? 48 : perk('unsleeping') ? 24 : 8; }
+    /* Whether the player can see a denizen at all. The first ten always; the Bell once Sunshaft 150 is sealed; the Wright at 12 Pane lights. */
+    function denLive(d, s) {
+      s = s || S;
+      return d.gate === 'shaft150' ? s.bestShaft >= FINAL_SHAFT : d.gate === 'pane12' ? paneCount(s) >= 12 : true;
+    }
 
     function availableUpgs() {
       return UPGS.filter(function (u) { return !S.upg[u.id] && u.show(); })
         .sort(function (a, b) { return a.cost - b.cost; });
     }
 
+    /* ---------- the sky ----------
+       Which phase of the day it is for a local time, and when it ends. Pure: the time comes in. */
+    function phaseAt(ms) {
+      var d = new Date(ms), mod = d.getHours() * 60 + d.getMinutes(), P = D.SKY.PHASES, ph = P[0], i;
+      for (i = 0; i < P.length; i++) {
+        var f = P[i].from, t = P[i].to;
+        if (f < t ? (mod >= f && mod < t) : (mod >= f || mod < t)) ph = P[i];
+      }
+      var end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(ph.to / 60), ph.to % 60, 0, 0).getTime();
+      if (end <= ms) end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, Math.floor(ph.to / 60), ph.to % 60, 0, 0).getTime();
+      return { id: ph.id, endsAt: end, phase: ph };
+    }
+    function nextPhase(ph) { var P = D.SKY.PHASES; return P[(P.indexOf(ph) + 1) % P.length]; }
+
+    /* What the strip shows. active: the clock is unlocked and switched on. */
+    function skyInfo(ms) {
+      var p = phaseAt(ms), n = nextPhase(p.phase);
+      return { active: skyOn(), id: p.id, glyph: p.phase.glyph, name: p.phase.name, effectText: p.phase.effectText,
+        next: n.id, nextName: n.name.replace(' above', '').toLowerCase(), inSec: Math.max(0, (p.endsAt - ms) / 1000) };
+    }
+
+    /* ---- the moon and the calendar ---- */
+    function moonPhase(ms) {
+      var x = ((ms - D.SKY.MOON_REF) / (D.SKY.SYNODIC * 86400000)) % 1;
+      return x < 0 ? x + 1 : x;
+    }
+    function moonName(ph) { return D.SKY.MOON_NAMES[Math.floor(((ph + 1 / 16) % 1) * 8)]; }
+    function moonEvent(ms) {
+      var p = moonPhase(ms);
+      if (p < D.SKY.MOONLESS.lo || p > D.SKY.MOONLESS.hi) return 'moonless';
+      if (p >= D.SKY.LIDLESS.lo && p <= D.SKY.LIDLESS.hi) return 'lidless';
+      return null;
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function localDay(ms) { var d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    /* Calendar events on a local date: ids of the dated windows and of an eclipse. */
+    function datedEvents(ms) {
+      var d = new Date(ms), m = d.getMonth() + 1, day = d.getDate(), out = [], key = localDay(ms);
+      D.SKY.DATED.forEach(function (ev) {
+        ev.windows.forEach(function (w) { if (m === w[0] && day >= w[1] && day <= w[2]) out.push(ev.id); });
+      });
+      D.SKY.ECLIPSES.forEach(function (x) { if (x.date === key) out.push(x.id); });
+      return out;
+    }
+    function eclipseCount() { var n = 0; for (var k in S.sky.eclipses) n++; return n; }
+
+    /* Every temporary sky factor on a moment, multiplied per channel and capped (x3). extra: other temporary
+       factors that share the cap, such as a Petition's. */
+    function skyEffects(ms, extra) {
+      var out = {}, ev = datedEvents(ms), me = moonEvent(ms), list = [phaseAt(ms).phase.effect];
+      function add(o) { for (var k in o) out[k] = (out[k] || 1) * o[k]; }
+      list.forEach(add);
+      if (extra) add(extra);
+      D.SKY.DATED.forEach(function (d) { if (ev.indexOf(d.id) >= 0) add(d.effect); });
+      D.SKY.MOON_EVENTS.forEach(function (d) { if (d.id === me) add(d.effect); });
+      if (ev.some(function (id) { return id.charAt(0) === 'e'; })) add(D.SKY.ECLIPSE.effect);
+      return capFactors(out);
+    }
+    function copyFactors(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+    /* No multiplied channel goes past x3 from temporary factors. A denizen's own channel (Eclipse Choir x10, Wisp-Gleaner x10) is exempt. */
+    function capFactors(out) {
+      for (var c in out) if (c.indexOf('den.') !== 0 && MULT.indexOf(c) >= 0 && out[c] > D.SKY.CAP) out[c] = D.SKY.CAP;
+      return out;
+    }
+
+    /* The next dated things after ms, soonest first: [{ id, name, at (ms of local midnight), days }]. */
+    function nextEvents(ms, count) {
+      var found = [], seen = {}, d0 = new Date(ms), i, day, t;
+      for (i = 1; i <= 800 && Object.keys(seen).length < 7; i++) {
+        t = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i, 12).getTime();
+        day = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i);
+        var prev = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i - 1, 12).getTime();
+        var begins = [];
+        var me = moonEvent(t); if (me && me !== moonEvent(prev)) begins.push(me);
+        datedEvents(t).forEach(function (id) { if (datedEvents(prev).indexOf(id) < 0) begins.push(id); });
+        begins.forEach(function (id) {
+          if (seen[id] && id.charAt(0) !== 'e') return;
+          seen[id] = 1;
+          var nm = id, k;
+          D.SKY.MOON_EVENTS.forEach(function (e) { if (e.id === id) nm = e.name; });
+          D.SKY.DATED.forEach(function (e) { if (e.id === id) nm = e.name; });
+          if (id.charAt(0) === 'e') nm = D.SKY.ECLIPSE.name;
+          found.push({ id: id, name: nm, at: day.getTime(), days: i });
+        });
+      }
+      return found.sort(function (a, b) { return a.at - b.at; }).slice(0, count || 6);
+    }
+
+    /* Everything the Almanac shows for a moment. */
+    function almanac(ms) {
+      var ph = moonPhase(ms), ev = [], me = moonEvent(ms), seenCount = {};
+      D.SKY.MOON_EVENTS.forEach(function (e) { if (e.id === me) ev.push({ id: e.id, name: e.name, effectText: e.effectText }); });
+      var dv = datedEvents(ms);
+      D.SKY.DATED.forEach(function (e) { if (dv.indexOf(e.id) >= 0) ev.push({ id: e.id, name: e.name, effectText: e.effectText }); });
+      dv.forEach(function (id) { if (id.charAt(0) === 'e') ev.push({ id: id, name: D.SKY.ECLIPSE.name, effectText: D.SKY.ECLIPSE.effectText }); });
+      return {
+        phase: skyInfo(ms), moon: ph, moonName: moonName(ph), events: ev, coming: nextEvents(ms, 6),
+        seen: S.sky.seen, eclipses: D.SKY.ECLIPSES.map(function (x) { return { id: x.id, date: x.date, type: x.type, seen: !!S.sky.eclipses[x.id] }; })
+      };
+    }
+
+    var lastPhaseId = null, lastEvents = null;    // null until the first look, so an event already under way is not announced as new
+    /* While the player is present: note the phase as seen, and say when it changes. */
+    function skyStep() {
+      if (!skyOn()) { lastPhaseId = null; return; }
+      var p = phaseAt(wallNow());
+      if (lastPhaseId && lastPhaseId !== p.id) say(p.phase.line);
+      lastPhaseId = p.id;
+      S.sky.phases[p.id] = 1;
+      // Calendar events: seen once each, eclipses witnessed once each, a Whisper when one begins while the game is open.
+      var now = wallNow(), me = moonEvent(now), ids = datedEvents(now), all = (me ? [me] : []).concat(ids), key = all.join(',');
+      if (key !== lastEvents) {
+        all.forEach(function (id) {
+          if (lastEvents === null || lastEvents.split(',').indexOf(id) >= 0) return;
+          var line = null;
+          D.SKY.MOON_EVENTS.concat(D.SKY.DATED).forEach(function (e) { if (e.id === id) line = e.line; });
+          if (id.charAt(0) === 'e') line = D.SKY.ECLIPSE.line;
+          if (line) say(line);
+        });
+        lastEvents = key;
+      }
+      all.forEach(function (id) {
+        if (id.charAt(0) === 'e') { if (!S.sky.eclipses[id]) S.sky.eclipses[id] = 1; }
+        else S.sky.seen[id] = 1;
+      });
+    }
+
+    /* ---------- modifiers ----------
+       Every bonus is a source: a function of the state that returns { channel: factor }. Channels
+       are listed in docs/design/ECONOMY.md section 2. Multiplicative channels multiply, the additive
+       ones add. A denizen's own channel is written 'den.<id>'. ctx is { present, wall }: present is
+       false when the realm is being credited for time away, so a bonus can be limited to open play.
+       recalc() and audit() read the same folded result, so a cost cannot drift between them. */
+    var MULT = ['gloom', 'might', 'echo', 'hand', 'cost', 'riteCost', 'glass', 'lanternRate', 'lanternLife', 'litanyRate', 'lanternYield'];
+    var ADD = ['awayPace', 'bossTime', 'autoHands'];
+    var SOURCES = [];
+    function addSource(name, fn) { SOURCES.push({ name: name, fn: fn }); }
+
+    function mods(s, ctx) {
+      var out = { den: {} }, i, k;
+      for (i = 0; i < MULT.length; i++) out[MULT[i]] = 1;
+      for (i = 0; i < ADD.length; i++) out[ADD[i]] = 0;
+      SOURCES.forEach(function (src) {
+        var r = src.fn(s, ctx);
+        if (!r) return;
+        for (k in r) {
+          if (k.indexOf('den.') === 0) out.den[k.slice(4)] = (out.den[k.slice(4)] || 1) * r[k];
+          else if (MULT.indexOf(k) >= 0) out[k] *= r[k];
+          else if (ADD.indexOf(k) >= 0) out[k] += r[k];
+          else throw new Error('Source ' + src.name + ' wrote unknown channel ' + k);
+        }
+      });
+      return out;
+    }
+
+    /* The folded modifiers for a state. For the live realm this is the copy recalc() made. */
+    function modsFor(s) {
+      return (s === S && C.mods) ? C.mods : mods(s, { present: true, wall: wallNow() });
+    }
+    function awayMods() { return mods(S, { present: false, wall: wallNow() }); }
+
+    function lvl(s, id) { return s.rites[id] || 0; }
+    function omensOf(s) { var t = 0; for (var k in s.omens) t++; return t; }
+
+    addSource('nightglass', function (s) {
+      if (s.vow === 'unlit') return null;
+      var f = 1 + 0.05 * s.glassTotal;
+      return { gloom: f, might: f };
+    });
+    addSource('omens', function (s) { return { gloom: 1 + 0.01 * omensOf(s) }; });
+    addSource('rites', function (s) {
+      return {
+        gloom: Math.pow(1.12, lvl(s, 'listen')),
+        might: Math.pow(1.2, lvl(s, 'edge')),
+        echo: Math.pow(1.15, lvl(s, 'names')),
+        hand: Math.pow(1.5, lvl(s, 'hands')),
+        lanternRate: 1 / Math.pow(0.9, lvl(s, 'lure')),
+        awayPace: 0.1 * lvl(s, 'sleep')
+      };
+    });
+    addSource('workings', function (s) {
+      var out = { hand: s.upg.hand0 ? 2 : 1, gloom: 1 };
+      D.REALM_UPGS.forEach(function (r) { if (s.upg[r.id]) out.gloom *= 1.5; });
+      D.DENIZENS.forEach(function (d) {
+        var n = 0;
+        for (var j = 0; j < D.UPG_TIERS.length; j++) if (s.upg[d.id + '_' + j]) n++;
+        out['den.' + d.id] = Math.pow(2, n);
+      });
+      return out;
+    });
+    addSource('perks', function (s) {
+      var p = s.perks, out = { gloom: 1, might: 1, echo: 1, cost: p.thrift ? 0.9 : 1, autoHands: p.bound ? 4 : 0 };
+      if (p.deep) out.gloom *= 2;
+      if (p.keen) out.might *= 2;
+      if (p.halls) out.echo *= 2;
+      if (p.queen) { out.gloom *= 5; out.might *= 5; out.echo *= 5; }
+      if (p.further) { out.gloom *= 10; out.might *= 10; }
+      if (p.older) { out.gloom *= 1.7; out.might *= 1.7; }
+      return out;
+    });
+    /* The Surface Clock. Bonuses from the sky apply while the player is present and never to away pay.
+       env.sky === false switches them off (the tests do, so no rule depends on the hour they run). */
+    function skyOn() { return env.sky !== false && !!S.unlocked.shafts; }
+    /* Temporary factors from the sky and from a Petition share one ceiling (x3 a channel). Present time only. */
+    addSource('sky', function (s, ctx) {
+      if (!ctx.present) return null;
+      var extra = petitionEffect(s, ctx.wall);
+      if (env.sky === false || !s.unlocked.shafts) return extra ? capFactors(copyFactors(extra)) : null;
+      return skyEffects(ctx.wall, extra);
+    });
+    /* The Rest petition works while the player is away, so it is not part of the present-only source. */
+    addSource('petitionRest', function (s) { return s.pet.active === 'rest' ? { awayPace: D.PETITIONS.list.filter(function (p) { return p.id === 'rest'; })[0].effect.awayPace } : null; });
+    addSource('vigil', function (s) {
+      var k = 0;
+      D.PETITIONS.milestones.forEach(function (m) { if (s.pet.count >= m) k++; });
+      return k ? { gloom: Math.pow(D.PETITIONS.factor, k) } : null;
+    });
+    // Eclipses witnessed are permanent: +2% each to Gloom, Might and Echoes, ten at most. They apply to away pay too.
+    addSource('eclipses', function (s) {
+      var n = 0, k;
+      for (k in s.sky.eclipses) n++;
+      var f = 1 + D.SKY.ECLIPSE.each * Math.min(D.SKY.ECLIPSE.max, n);
+      return n ? { gloom: f, might: f, echo: f } : null;
+    });
+    // Relics are permanent: each adds a little to its set's stat, a whole set adds more.
+    addSource('relics', function (s) {
+      var out = {};
+      D.RELIC_SETS.forEach(function (rs) {
+        var n = 0;
+        D.RELICS.forEach(function (r) { if (r.set === rs.id && s.relics[r.id]) n++; });
+        if (!n) return;
+        var full = n === D.RELICS.filter(function (r) { return r.set === rs.id; }).length;
+        if (rs.stat === 'awayPace') out.awayPace = (out.awayPace || 0) + rs.each * n + (full ? rs.bonus : 0);
+        else out[rs.stat] = (out[rs.stat] || 1) * (1 + rs.each * n) * (full ? rs.bonus : 1);
+      });
+      return out;
+    });
+    // Keepings are permanent. An active vow is a rule in the action it limits, and a source where it changes a number.
+    addSource('keepings', function (s) {
+      var out = {}, any = false;
+      D.VOWS.forEach(function (v) {
+        if (!s.keepings[v.id]) return;
+        any = true;
+        for (var k in v.mods) { if (k === 'bossTime') out.bossTime = (out.bossTime || 0) + v.mods[k]; else out[k] = (out[k] || 1) * v.mods[k]; }
+        if (v.id === 'hands' && s.perks.bound) out.autoHands = 2;
+      });
+      return any ? out : null;
+    });
+    addSource('vow', function (s) { return s.vow === 'hands' ? { hand: 0 } : null; });
+    addSource('pane', function (s) {
+      var n = paneCount(s);
+      if (!n) return null;
+      var f = Math.pow(D.PANE.factor, n);
+      return { gloom: f, might: f, echo: f };
+    });
+    addSource('current', function (s) { return D.CURRENTS.filter(function (c) { return c.id === s.current; })[0].mods; });
+    addSource('litanies', function (s) { return { might: s.lit.teeth.on > 0 ? 3 : 1 }; });
+    addSource('lanternBuffs', function (s) {
+      return { gloom: s.buffs.hush > 0 ? 5 : 1, might: s.buffs.teeth > 0 ? 5 : 1 };
+    });
+
     /* ---------- derived values ---------- */
 
-    function recalc() {
-      var i, d, n;
-      C.omens = omenCount();
-      var common = 1 + 0.05 * S.glassTotal;
-      var m = common * (1 + 0.01 * C.omens) * Math.pow(1.12, rl('listen'));
-      D.REALM_UPGS.forEach(function (r) { if (S.upg[r.id]) m *= 1.5; });
-      if (perk('deep')) m *= 2;
-      if (perk('queen')) m *= 5;
-      if (perk('further')) m *= 10;
-      C.permMult = m;
-      C.gMult = m * (S.buffs.hush > 0 ? 5 : 1);
+    function recalc(ctx) {
+      var i, d, M = mods(S, ctx || { present: true, wall: wallNow() });
+      C.mods = M;
+      C.omens = omensOf(S);
+      C.gMult = M.gloom;
 
       C.denOut = {}; C.denEach = {};
       var total = 0, mightBase = 1;
       for (i = 0; i < D.DENIZENS.length; i++) {
         d = D.DENIZENS[i];
-        n = 0;
-        for (var j = 0; j < D.UPG_TIERS.length; j++) if (S.upg[d.id + '_' + j]) n++;
-        C.denEach[d.id] = d.rate * Math.pow(2, n) * C.gMult;
+        C.denEach[d.id] = d.rate * (M.den[d.id] || 1) * M.gloom;
         C.denOut[d.id] = C.denEach[d.id] * cnt(d.id);
         total += C.denOut[d.id];
         mightBase += cnt(d.id) * Math.pow(3, i);
@@ -449,27 +1093,17 @@
 
       var pct = 0;
       for (i = 1; i < D.HAND_UPGS.length; i++) if (S.upg[D.HAND_UPGS[i].id]) pct += 0.02;
-      var handBase = (S.upg.hand0 ? 2 : 1) * Math.pow(1.5, rl('hands'));
-      C.click = handBase * C.gMult + pct * C.denGps;
-      C.gps = C.denGps + (perk('bound') ? 4 * C.click : 0);
-
-      var mm = common * Math.pow(1.2, rl('edge'));
-      if (perk('keen')) mm *= 2;
-      if (perk('queen')) mm *= 5;
-      if (perk('further')) mm *= 10;
-      if (S.buffs.teeth > 0) mm *= 5;
-      C.might = mightBase * mm;
-
-      var em = Math.pow(1.15, rl('names'));
-      if (perk('halls')) em *= 2;
-      if (perk('queen')) em *= 5;
-      C.echoMult = em;
+      C.click = M.hand === 0 ? 0 : M.hand * M.gloom + pct * C.denGps;
+      C.gps = C.denGps + M.autoHands * C.click;
+      C.might = mightBase * M.might;
+      C.echoMult = M.echo;
+      C.lidless = !!(ctx ? ctx.present : true) && skyOn() && moonEvent(wallNow()) === 'lidless';   // x2 Echoes from Lampwarden seals, while present
     }
 
     /* ---------- core actions ---------- */
 
     function gain(x) { S.gloom += x; S.runGloom += x; S.totalGloom += x; }
-    function addEchoes(x) { S.echoes += x; S.echoesTotal += x; }
+    function addEchoes(x) { S.echoes += x; S.echoesTotal += x; S.runEchoes += x; }
 
     function afterChange() { recalc(); slowChecks(); }
 
@@ -477,12 +1111,13 @@
       var d = DEN_BY[id];
       if (!d) return false;
       var n = cnt(d.id), k = S.opts.buy === 'max' ? maxBuy(d, n) : S.opts.buy;
+      if (S.vow === 'few') k = Math.min(k, 50 - n);
       if (k < 1) return false;
       var cost = denCost(d, n, k);
       if (S.gloom < cost) return false;
       S.gloom -= cost;
       S.den[d.id] = n + k;
-      if (n === 0) say('A ' + d.name + ' answers the seat.');
+      if (n === 0) { say('A ' + d.name + ' answers the seat.'); emit('den', { id: d.id, name: d.name }); }
       afterChange();
       return true;
     }
@@ -496,20 +1131,23 @@
       return true;
     }
 
-    function buyRite(id) {
+    function buyRite(id, count) {
       var r = RITE_BY[id];
       if (!r) return false;
-      var c = riteCost(r);
+      var k = count || 1;
+      if (S.vow === 'silence') return false;
+      if (r.max && rl(r.id) + k > r.max) return false;
+      var c = riteCostN(r, rl(r.id), k);
       if (S.echoes < c || (r.max && rl(r.id) >= r.max)) return false;
       S.echoes -= c;
-      S.rites[r.id] = rl(r.id) + 1;
+      S.rites[r.id] = rl(r.id) + k;
       afterChange();
       return true;
     }
 
     function buyPerk(id) {
       var p = PERK_BY[id];
-      if (!p || perk(p.id) || S.glass < p.cost) return false;
+      if (!p || perk(p.id) || S.glass < p.cost || (p.needs && !perk(p.needs))) return false;
       S.glass -= p.cost;
       S.perks[p.id] = 1;
       say('Set in Nightglass: ' + p.name + '.');
@@ -517,22 +1155,48 @@
       return true;
     }
 
-    function unlight() {
+    function currentDef(id) { return D.CURRENTS.filter(function (c) { return c.id === id; })[0] || D.CURRENTS[0]; }
+    /* The three currents offered at an Unlighting: Still, and two others. Fixed by the seed and the Unlighting count. */
+    function currentOffer() {
+      var others = shuffle(rng('current', S.unlightings), D.CURRENTS.filter(function (c) { return c.id !== 'still'; })).slice(0, 2);
+      return [D.CURRENTS[0]].concat(others);
+    }
+    /* chosen: a current id from the offer. The first Unlighting offers no choice and starts a Still fathom. */
+    function unlight(chosen, vowId) {
       var g = glassGain();
       if (g < 1) return false;
+      var takeVow = vowId && S.unlightings >= 3 ? vowDef(vowId) : null;
+      if (vowId && !takeVow) return false;
+      var next = 'still', picked = false;
+      if (S.unlightings >= 1 && chosen && chosen !== 'still') {
+        if (!currentOffer().some(function (c) { return c.id === chosen; })) return false;
+        next = chosen; picked = true;
+      } else if (S.unlightings >= 1 && chosen === 'still') picked = true;
+      writeBackup('unlight', pack());
+      if (S.vow) say(D.VOW_LINES.down);                                   // letting go sets any vow down
+      S.fathoms.push({ n: S.unlightings + 1, current: S.current, vow: S.fathomVow, kept: !!S.fathomVow && S.vow === '', sec: Math.round(S.runTime), glass: g, best: S.runBest });
+      if (S.fathoms.length > 20) S.fathoms.shift();
       S.glass += g; S.glassTotal += g; S.unlightings++;
-      S.gloom = 0; S.runGloom = 0; S.echoes = 0;
+      S.current = next;
+      S.vow = ''; S.vowGoal = 0; S.fathomVow = ''; S.runBest = 0; S.peak = { rate: 0, at: 0 };
+      if (picked) { S.currentChoices++; say(currentDef(next).line); }
+      S.gloom = 0; S.runGloom = 0; S.echoes = 0; S.runEchoes = 0;
       S.den = {}; S.upg = {};
       var kept = {};
       if (perk('remember')) for (var k in S.rites) { var h = Math.floor(S.rites[k] / 2); if (h) kept[k] = h; }
       S.rites = kept;
-      if (perk('absence')) { S.den.gleaner = 15; S.den.scribe = 5; }
+      S.ritesKept = {};
+      for (var kk in kept) S.ritesKept[kk] = kept[kk];
+      var free = startingDenizens(S);
+      for (var fk in free) S.den[fk] = free[fk];
       S.shaft = perk('quick') ? Math.floor(S.bestShaft / 2) + 1 : 1;
       S.shaftTop = S.shaft;
-      S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = BOSS_TIME; S.march = 0;
+      if (takeVow) { S.fathomVow = takeVow.id; S.vow = takeVow.id; S.vowGoal = Math.max(takeVow.goal, S.shaftTop + 20); say(takeVow.line); }
+      S.shaftHp = shaftMaxHp(S.shaft); S.bossTime = bossMax(); S.march = 0;
       S.autoAdvance = true; S.regroup = false;
       S.buffs.hush = 0; S.buffs.teeth = 0;
       S.runTime = 0;
+      D.LITANIES.forEach(function (l) { S.lit[l.id].on = 0; S.lit[l.id].cd = 0; });
       say('The realm lets go. A fathom down, the dark is closer-grained. You carry ' + fmt(g) + ' Nightglass.');
       dirty.upgs = true;
       afterChange();
@@ -546,7 +1210,7 @@
     function placeShaft(n) {
       S.shaft = Math.max(1, Math.min(n, S.shaftTop));
       S.shaftHp = shaftMaxHp(S.shaft);
-      S.bossTime = BOSS_TIME;
+      S.bossTime = bossMax();
       S.march = 0;
     }
 
@@ -561,80 +1225,153 @@
       var n = S.shaft;
       addEchoes(shaftReward(n));
       S.sealed++;
+      if (n > S.runBest) S.runBest = n;
       if (n >= S.shaftTop) {
         S.shaftTop = n + 1;
+        if (S.vow && S.shaftTop > S.vowGoal) keepVow();
         if (n > S.bestShaft) {
           S.bestShaft = n;
-          if (n % 10 === 0) say(shaftName(n) + ' is undone. Sunshaft ' + n + ' is sealed.');
+          if (n % 10 === 0) { say(shaftName(n) + ' is undone. Sunshaft ' + n + ' is sealed.'); emit('boss', { n: n, name: shaftName(n) }); }
           if (n === FINAL_SHAFT && !S.ended) { S.ended = true; pendingEnding = true; }
         }
       }
       if (S.autoAdvance) S.shaft = n + 1;
       S.shaftHp = shaftMaxHp(S.shaft);
-      S.bossTime = BOSS_TIME;
+      S.bossTime = bossMax();
       S.march = MARCH;
     }
 
+    var lastHeld = null;       // the Lampwarden that most recently turned the Host back, for the Night Report
+    function vowDef(id) { return D.VOWS.filter(function (v) { return v.id === id; })[0] || null; }
+    function keepVow() {
+      var v = vowDef(S.vow);
+      S.keepings[v.id] = 1; S.vow = ''; S.vowGoal = 0;
+      say(D.VOW_LINES.kept);
+      emit('keeping', { name: v.keeping });
+      recalc();
+    }
+    function setDownVow() {
+      if (!S.vow) return false;
+      S.vow = ''; S.vowGoal = 0;
+      say(D.VOW_LINES.down);
+      afterChange();
+      return true;
+    }
     function failBoss() {
+      lastHeld = { n: S.shaft, name: shaftName(S.shaft) };
+      emit('fail', { name: shaftName(S.shaft) });
       say(shaftName(S.shaft) + ' holds the shaft. The Host falls back to regroup.');
       S.autoAdvance = false;
       S.regroup = true;
       placeShaft(S.shaft - 1);
     }
 
+    /* The Litany of the Held Breath stops a Lampwarden's timer for its first `on` seconds. A dt that spans the
+       end of the effect is split, so the boundary is exact. */
     function fight(dt) {
+      var held = S.lit.breath.on;
+      if (held > 0 && dt > held) { fightFor(held, true); fightFor(dt - held, false); }
+      else fightFor(dt, held > 0);
+    }
+    function fightFor(dt, frozen) {
       if (!S.unlocked.shafts) return;
       var mt = C.might, iter = 0;
       while (dt > 1e-9 && iter++ < 1e6) {
         if (S.march > 0) { var w = Math.min(dt, S.march); S.march -= w; dt -= w; continue; }
         var n = S.shaft, boss = n % 10 === 0;
+        if (perk('chamberlain') && S.autoAdvance && n < S.shaftTop) {        // already sealed this fathom: passed at ten a second
+          var sk = Math.min(dt, 0.1); dt -= sk; S.shaft = n + 1; S.shaftHp = shaftMaxHp(S.shaft); continue;
+        }
         if (!S.autoAdvance && !boss) {
           var per = shaftMaxHp(n) / mt + MARCH, kills = Math.floor(dt / per);
           if (kills >= 2) { addEchoes(shaftReward(n) * kills); S.sealed += kills; dt -= kills * per; continue; }
         }
         var need = S.shaftHp / mt;
-        var avail = boss ? Math.min(dt, S.bossTime) : dt;
+        var avail = boss && !frozen ? Math.min(dt, S.bossTime) : dt;
         if (need <= avail) { dt -= need; clearShaft(); }
         else {
           S.shaftHp -= mt * avail; dt -= avail;
-          if (boss) { S.bossTime -= avail; if (S.bossTime <= 1e-9) failBoss(); }
+          if (boss && !frozen) { S.bossTime -= avail; if (S.bossTime <= 1e-9) failBoss(); }
         }
       }
     }
 
-    /* ---------- stray lanterns ---------- */
+    /* ---------- lanterns ----------
+       Stray Lanterns, Votive Lanterns, Warden's Lamps and Processions. `lanterns` holds every lamp that is
+       on screen or about to be (a Procession's later lamps wait their turn). Each is
+       { id, kind, path, life, total, wait, proc }. The interface only draws them; every outcome is here. */
 
-    var lantern = null;       // { life } while one is drifting past, otherwise null
+    var LN = D.LANTERNS;
+    var lanterns = [], lampId = 0, procId = 0, procession = null, welcomeLantern = false;
 
-    function lanternDelay() { return (70 + env.random() * 80) * Math.pow(0.9, rl('lure')); }
+    function lanternDelay() { return (70 + env.random() * 80) / modsFor(S).lanternRate; }
 
-    function spawnLantern() { lantern = { life: 14 }; }
+    /* Which kind a new lantern is. Pure: r in [0, 1). A Warden's Lamp needs a Lampwarden to be fighting. */
+    function lanternKind(r, boss) {
+      var x = r * 100, i;
+      for (i = 0; i < LN.kinds.length; i++) {
+        if (x < LN.kinds[i].w) return (LN.kinds[i].id === 'warden' && !boss) ? 'stray' : LN.kinds[i].id;
+        x -= LN.kinds[i].w;
+      }
+      return 'stray';
+    }
+    function kindLife(kind) { for (var i = 0; i < LN.kinds.length; i++) if (LN.kinds[i].id === kind) return LN.kinds[i].life; return 14; }
 
-    function hideLantern() { lantern = null; S.lanternIn = lanternDelay(); }
+    function addLamp(kind, path, life, wait, proc) {
+      lanterns.push({ id: ++lampId, kind: kind, path: path, life: life, total: life, wait: wait || 0, proc: proc || 0 });
+    }
 
-    /* trusted: the interface vouches that a real input event caused this call.
-       Returns { kind, amount, duration } or null when there was nothing to snuff. */
-    function snuffLantern(trusted) {
-      if (trusted !== true || !lantern) return null;
-      hideLantern();
-      S.lanterns++;
-      var big = perk('hunger'), mult = big ? 3 : 1, dur = big ? 80 : 40;
+    function bossFight() { return S.unlocked.shafts && S.shaft % 10 === 0; }
+
+    function spawnLantern() {
+      S.lanternSpawns++;
+      var life = modsFor(S).lanternLife, i;
+      if (S.lanternSpawns % LN.procession.every === 0 && !(env.modalOpen && env.modalOpen())) {
+        procession = { id: ++procId, left: LN.procession.count };
+        for (i = 0; i < LN.procession.count; i++) addLamp('stray', i % 2 ? 'rtl' : 'ltr', LN.procession.life * life, i * LN.procession.gap, procession.id);
+      } else {
+        var kind = S.lanterns >= LN.unlockAfter ? lanternKind(env.random(), bossFight()) : 'stray';
+        addLamp(kind, kind === 'votive' ? 'drop' : (kind === 'warden' ? 'cross' : null), kindLife(kind) * life, 0, 0);
+      }
+      if (welcomeLantern) { welcomeLantern = false; say('A lantern was waiting for someone to come back.'); }
+    }
+
+    /* Which way a new lantern travels. Pure: the interface passes a random number in [0, 1). */
+    function lanternPath(r) {
+      var total = 0, i, x;
+      for (i = 0; i < D.LANTERN_PATHS.length; i++) total += D.LANTERN_PATHS[i].w;
+      x = r * total;
+      for (i = 0; i < D.LANTERN_PATHS.length; i++) {
+        if (x < D.LANTERN_PATHS[i].w) return D.LANTERN_PATHS[i].id;
+        x -= D.LANTERN_PATHS[i].w;
+      }
+      return D.LANTERN_PATHS[D.LANTERN_PATHS.length - 1].id;
+    }
+
+    /* After the last lamp goes, the wait for the next one starts. */
+    function lampsGone() { if (!lanterns.length) S.lanternIn = lanternDelay(); }
+
+    function streakMult() { return 1 + LN.streak.step * Math.min(LN.streak.cap, S.streak); }
+
+    /* One roll from the outcome table. share scales the amount or the duration. */
+    function rollOutcome(share) {
+      var big = perk('hunger'), mult = (big ? 3 : 1) * streakMult() * share, dur = (big ? 80 : 40) * streakMult() * share;
       var opts = ['spill', 'spill', 'spill', 'hush', 'hush', 'hush'];
       if (S.unlocked.shafts) opts.push('teeth', 'teeth', 'echo', 'echo');
-      var pick = opts[Math.floor(env.random() * opts.length)];
-      var res;
+      var pick = opts[Math.floor(env.random() * opts.length)], res;
+      if (pick === 'hush' && currentDef(S.current).noHush) pick = 'spill';       // a Loud Fathom: the Hush will not come
       if (pick === 'spill') {
-        var g = Math.max(C.gps * 300, 30 * C.click) * mult;
+        var g = Math.max(C.gps * 300, 30 * C.click) * mult * modsFor(S).lanternYield;
         gain(g);
         say('The lantern gutters. Spilled light curdles into ' + fmt(g) + ' Gloom.');
         res = { kind: 'spill', amount: g, duration: 0 };
       } else if (pick === 'hush') {
-        S.buffs.hush = dur;
-        say('A Deep Hush falls. All Gloom ×5 for ' + dur + ' seconds.');
+        S.buffs.hush = Math.max(S.buffs.hush, dur);
+        say('A Deep Hush falls. All Gloom ×5 for ' + Math.round(dur) + ' seconds.');
         res = { kind: 'hush', amount: 5, duration: dur };
       } else if (pick === 'teeth') {
-        S.buffs.teeth = dur;
-        say('The Host bares its teeth. Might ×5 for ' + dur + ' seconds.');
+        S.buffs.teeth = Math.max(S.buffs.teeth, dur);
+        say('The Host bares its teeth. Might ×5 for ' + Math.round(dur) + ' seconds.');
         res = { kind: 'teeth', amount: 5, duration: dur };
       } else {
         var e = shaftReward(S.shaft) * 10 * mult;
@@ -642,8 +1379,42 @@
         say('The lantern was carrying memories. ' + fmt(e) + ' Echoes recovered.');
         res = { kind: 'echo', amount: e, duration: 0 };
       }
-      afterChange();
       return res;
+    }
+
+    /* trusted: the interface vouches that a real input event caused this call. id: which lamp (the oldest
+       visible one when left out). Returns the first outcome's { kind, amount, duration } plus { lampKind, outcomes, lamp }, or null when there was nothing to snuff. */
+    function snuffLantern(trusted, id) {
+      if (trusted !== true || S.vow === 'door') return null;
+      var lamp = null, i;
+      for (i = 0; i < lanterns.length; i++) if (lanterns[i].wait <= 0 && (!id || lanterns[i].id === id)) { lamp = lanterns[i]; break; }
+      if (!lamp) return null;
+      lanterns.splice(lanterns.indexOf(lamp), 1);
+      S.lanterns++;
+      var share = lamp.proc ? LN.procession.share : 1, outcomes = [], kind = lamp.kind;
+      if (kind === 'warden' && !bossFight()) kind = 'stray';          // the Host is no longer fighting a Lampwarden
+      if (kind === 'votive') { outcomes.push(rollOutcome(share)); outcomes.push(rollOutcome(share)); }
+      else if (kind === 'warden') {
+        var cut = LN.wardenShare * shaftMaxHp(S.shaft);
+        S.shaftHp = Math.max(0, S.shaftHp - cut);
+        S.bossTime = Math.min(bossMax(), S.bossTime + LN.wardenTime);
+        S.wardenLamps++;
+        say('The Warden\'s Lamp burns the Lampwarden\'s light thin.');
+        outcomes.push({ kind: 'warden', amount: cut, duration: LN.wardenTime });
+        if (S.shaftHp <= 1e-9) clearShaft();                              // cleared this way, it pays out as any seal does
+      } else outcomes.push(rollOutcome(share));
+      S.streak++;
+      if (S.streak > S.bestStreak) S.bestStreak = S.streak;
+      if (lamp.proc && procession && procession.id === lamp.proc && --procession.left === 0) {
+        var bonus = (perk('hunger') ? 80 : 40);
+        S.buffs.hush = Math.max(S.buffs.hush, bonus);
+        S.processions++;
+        say('The whole procession, dark. The Scribes are counting chains.');
+        procession = null;
+      }
+      lampsGone();
+      afterChange();
+      return { kind: outcomes[0].kind, amount: outcomes[0].amount, duration: outcomes[0].duration, lampKind: kind, outcomes: outcomes, lamp: lamp };
     }
 
     /* A hand gather. trusted: the interface vouches for the input event and its rate.
@@ -658,24 +1429,217 @@
       return amount;
     }
 
+    function rng(label, counter) { return mulberry32(hash32(S.seed + ':' + label + ':' + counter)); }
+
+    /* ---------- petitions and the Vigil ----------
+       Once a day the denizens state three intentions and the Regent grants one. Days are counted, never chained. */
+    function dayIndex(ms) { return Math.floor((ms - new Date(ms).getTimezoneOffset() * -60000) / 86400000); }
+    function petitionDef(id) { var l = D.PETITIONS.list; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+    function qualifies(p) {
+      var n = p.needs;
+      if (n.den && cnt(n.den) < 1) return false;
+      if (n.shafts && !S.unlocked.shafts) return false;
+      if (n.rites && !S.unlocked.rites) return false;
+      if (n.lanterns && S.lanterns < n.lanterns) return false;
+      return true;
+    }
+    /* The three options waiting, or null. Fixed by the saved seed and the count, so a reload or a clock change shows the same three. */
+    function petitionOffer() {
+      if (totalDenizens() < D.PETITIONS.unlockAt) return null;
+      var now = wallNow();
+      if (dayIndex(now) <= S.pet.day) return null;
+      if (S.pet.count > 0 && S.played - S.pet.playedAt < D.PETITIONS.playedGap) return null;
+      var pool = D.PETITIONS.list.filter(qualifies);
+      if (pool.length < 1) return null;
+      return shuffle(rng('petition', S.pet.count), pool).slice(0, 3);
+    }
+    /* The modifier map in effect: today's petition, while its day lasts (the Rest petition is handled apart). */
+    function petitionEffect(s, ms) {
+      var p = s.pet.active && s.pet.active !== 'rest' ? petitionDef(s.pet.active) : null;
+      return p && dayIndex(ms) <= s.pet.day ? p.effect : null;
+    }
+    function grantPetition(id, trusted) {
+      if (trusted !== true) return false;
+      var offer = petitionOffer(), p = null;
+      if (!offer) return false;
+      offer.forEach(function (o) { if (o.id === id) p = o; });
+      if (!p) return false;
+      S.pet.day = dayIndex(wallNow()); S.pet.count++; S.pet.playedAt = S.played; S.pet.active = p.id;
+      if (p.now === 'temper') S.gloom *= 0.9;
+      if (p.now === 'tithe') addEchoes(20 * shaftReward(S.shaftTop));
+      say('Granted. The ' + p.who + ' have gone to see about it.');
+      afterChange();
+      return true;
+    }
+    function vigilMilestone() { var k = 0; D.PETITIONS.milestones.forEach(function (m) { if (S.pet.count >= m) k++; }); return k; }
+
+    /* ---------- Soundings and Relics ---------- */
+    function sdepth(id) { var d = D.SOUNDINGS.depths; for (var i = 0; i < d.length; i++) if (d[i].id === id) return d[i]; return null; }
+    function slackLines() { var n = 0; S.snd.lines.forEach(function (l) { if (l.left <= 0) n++; }); return n; }
+    function setRelics(id) { return D.RELICS.filter(function (r) { return r.set === id; }); }
+    function setDone(id) { var all = setRelics(id); return all.length && all.every(function (r) { return S.relics[r.id]; }) ? 1 : 0; }
+    function relicCount() { var n = 0; for (var k in S.relics) n++; return n; }
+    function maxLines() { return perk('twolines') ? 2 : 1; }
+    function depthOpen(d) {
+      return d.unlock === 'always' || (d.unlock === 'tide25' && cnt('tide') >= 25) || (d.unlock === 'unlight' && S.unlightings >= 1);
+    }
+    function lowerCost(d) { return C.gps * d.cost; }
+
+    /* Lowers a line. Returns false when it cannot be done now. */
+    function lowerLine(id, trusted) {
+      var d = sdepth(id);
+      if (trusted !== true || !d || !S.unlocked.soundings || !depthOpen(d) || S.snd.lines.length >= maxLines()) return false;
+      var cost = lowerCost(d);
+      if (S.gloom < cost) return false;
+      S.gloom -= cost;
+      S.snd.lines.push({ id: d.id, left: d.hours * 3600 });
+      say('The line is down. It will take a while.');
+      afterChange();
+      return true;
+    }
+
+    /* Time on the line. It counts in step() and, away, in full: the away cap does not apply. */
+    function lineTime(sec) {
+      S.snd.lines.forEach(function (l) {
+        if (l.left <= 0) return;
+        l.left = Math.max(0, l.left - sec);
+        if (l.left <= 0) { say('The line has gone slack. Something is tied to it.'); emit('slack', { id: l.id }); }
+      });
+    }
+
+    /* Draws a slack line up. The result comes from the saved seed and the count of draws, so reloading cannot reroll it. */
+    function drawUp(index, trusted) {
+      var line = S.snd.lines[index], d = line ? sdepth(line.id) : null;
+      if (trusted !== true || !d || line.left > 0) return false;
+      var r = rng('sounding', S.snd.done), both = d.sets.every(setDone);
+      var set = pick(r, d.sets), chance = Math.min(1, D.SOUNDINGS.chance + D.SOUNDINGS.perDry * S.snd.dry[d.id]);
+      var hit = r() < chance, relic = null, echoes = d.hours * D.SOUNDINGS.sealsPerHour * shaftReward(S.shaftTop) * (both ? 2 : 1);
+      var rel = pick(r, setRelics(set));
+      if (hit && !both) {
+        if (S.relics[rel.id]) { S.snd.dry[d.id]++; say('The same thing came up twice. The Sea gave Echoes for it instead.'); addEchoes(echoes); }
+        else { S.relics[rel.id] = 1; S.snd.dry[d.id] = 0; relic = rel; say(rel.name + '. ' + rel.line); }
+      } else { S.snd.dry[d.id]++; addEchoes(echoes); say('The line comes up wet. ' + fmt(echoes) + ' Echoes were tied to it.'); }
+      S.snd.done++;
+      S.snd.lines.splice(index, 1);
+      if (relic) emit('relic', { name: relic.name, line: relic.line });
+      afterChange();
+      return { relic: relic, echoes: relic ? 0 : echoes };
+    }
+
+    /* ---------- litanies ---------- */
+    function litanyCooldown(l) { return l.cd * Math.pow(0.95, rl('breathing')); }
+
+    /* Speaks a Litany. trusted: a real input event. Returns false when it cannot be spoken now. */
+    function speakLitany(id, trusted) {
+      if (trusted !== true || !S.unlocked.rites) return false;
+      var l = null, i;
+      for (i = 0; i < D.LITANIES.length; i++) if (D.LITANIES[i].id === id) l = D.LITANIES[i];
+      if (!l || S.lit[id].cd > 0) return false;
+      S.lit[id].cd = litanyCooldown(l);
+      S.lit[id].on = l.on;
+      S.litanyUses++;
+      if (id === 'undertow') {
+        recalc();
+        var g = 90 * C.gps / (S.buffs.hush > 0 ? 5 : 1);                // the rate without a Deep Hush
+        gain(g);
+        say('The Undertow comes in. ' + fmt(g) + ' Gloom.');
+      } else say(l.name + ' is spoken.');
+      afterChange();
+      return true;
+    }
+
+    /* ---------- court chatter ----------
+       One line every few minutes from a denizen the player owns, never repeating until the pool is spent.
+       The timer is not saved. It runs only while the page is visible and no dialog is open. */
+    var chatterIn = -1, usedChatter = {};
+    function chatterDelay(first) { return first ? 60 + env.random() * 60 : 150 + env.random() * 210; }
+
+    /* A line and the denizen it belongs to, or null when no owned denizen has one left. Marks it used. */
+    function pickChatter() {
+      var pool = [], pass, id;
+      for (pass = 0; pass < 2 && !pool.length; pass++) {
+        for (id in D.CHATTER) {
+          if (cnt(id) < 1) continue;
+          D.CHATTER[id].forEach(function (line) { if (!usedChatter[line]) pool.push({ id: id, line: line }); });
+        }
+        if (!pool.length) usedChatter = {};
+      }
+      if (!pool.length) return null;
+      var pick = pool[Math.floor(env.random() * pool.length)];
+      usedChatter[pick.line] = 1;
+      return pick;
+    }
+
+    function chatterStep(dt) {
+      if (!S.opts.chatter || S.played < 180) return;
+      if ((env.hidden && env.hidden()) || (env.modalOpen && env.modalOpen())) return;
+      if (chatterIn < 0) chatterIn = chatterDelay(true);
+      chatterIn -= dt;
+      if (chatterIn > 0) return;
+      if (monoNow() - lastSayAt < 5000) { chatterIn = 10; return; }          // a Whisper just landed: wait
+      var p = pickChatter();
+      chatterIn = chatterDelay(false);
+      if (p) say(p.line, 'chatter');
+    }
+
+    /* Whispers kept across a reload (the interface writes them under their own key). The text comes from
+       storage, so it is untrusted: only an array of short strings is accepted, at most 30. */
+    function parseLog(text) {
+      var a;
+      try { a = JSON.parse(text); } catch (e) { return []; }
+      if (!Array.isArray(a)) return [];
+      return a.filter(function (x) { return typeof x === 'string' && x.length > 0 && x.length <= 300; }).slice(0, 30);
+    }
+
     /* ---------- time ---------- */
 
     var slowTimer = 0, saveTimer = 0;
 
+    /* Time is cut where a Litany's effect ends, so each stretch sees the right Might and the right timer. */
     function step(dt) {
+      var guard = 0;
+      while (dt > 1e-9 && guard++ < 8) {
+        var cut = dt;
+        ['teeth', 'breath'].forEach(function (id) { var on = S.lit[id].on; if (on > 1e-9 && on < cut) cut = on; });
+        stepOne(cut);
+        dt -= cut;
+      }
+    }
+    function stepOne(dt) {
       recalc();
       gain(C.gps * dt);
       if (S.buffs.hush > 0) S.buffs.hush = Math.max(0, S.buffs.hush - dt);
       if (S.buffs.teeth > 0) S.buffs.teeth = Math.max(0, S.buffs.teeth - dt);
-      if (lantern) { lantern.life -= dt; if (lantern.life <= 0) hideLantern(); }
+      // Lanterns neither spawn nor expire while the page is hidden. One already drifting is withdrawn.
+      chatterStep(dt);
+      skyStep();
+      if (env.hidden && env.hidden()) { if (lanterns.length) { lanterns = []; procession = null; S.lanternIn = 5; } }   // withdrawn, not lost: the streak is kept
+      else if (lanterns.length) {
+        for (var li = lanterns.length - 1; li >= 0; li--) {
+          var lp = lanterns[li];
+          if (lp.wait > 0) { lp.wait -= dt; continue; }
+          lp.life -= dt;
+          if (lp.life <= 0) {                                              // it drifted past unsnuffed
+            lanterns.splice(li, 1);
+            if (S.vow !== 'door') S.streak = 0;          // under the Vow of the Open Door a lamp that drifts past breaks nothing
+            if (lp.proc && procession && procession.id === lp.proc) procession = null;
+          }
+        }
+        lampsGone();
+      }
       else { S.lanternIn -= dt; if (S.lanternIn <= 0 && S.totalGloom >= 50) spawnLantern(); }
       fight(dt);
+      var lr = C.mods ? C.mods.litanyRate : 1;
+      D.LITANIES.forEach(function (l) { var t = S.lit[l.id]; t.on = Math.max(0, t.on - dt); t.cd = Math.max(0, t.cd - dt * lr); });
+      lineTime(dt);
       S.played += dt; S.runTime += dt;
     }
 
     /* Credits time the page was not running. Returns a plain report, or null when there is
        nothing to tell. bestShaft is the new deepest seal, or 0 when it did not move. */
-    function away(sec) {
+    /* kind: 'absence' (the page was not running) or 'throttle' (the page ran slowly in the background).
+       A throttled tab keeps any lantern boons running down instead of clearing them. */
+    function away(sec, kind) {
       if (S.debt > 0) {
         var pay = Math.min(sec, S.debt);
         S.debt -= pay; sec -= pay;
@@ -683,24 +1647,32 @@
       }
       var capH = awayCapHours();
       var t = Math.min(sec, capH * 3600);
-      var eff = awayPace();
+      if (sec >= 600) { S.lanternIn = Math.min(S.lanternIn, 8); welcomeLantern = true; }
+      lineTime(sec);                         // a line runs its whole length away, whatever the away cap
+      // A Litany does nothing while the realm is away: its effect ends and its cooldown runs the full time.
+      D.LITANIES.forEach(function (l) { S.lit[l.id].on = 0; S.lit[l.id].cd = Math.max(0, S.lit[l.id].cd - sec); });
+      var eff = awayPace(), kept = { h: S.buffs.hush, t: S.buffs.teeth };
       S.buffs.hush = 0; S.buffs.teeth = 0;
-      recalc();
+      recalc({ present: false, wall: wallNow() });
       var g = C.gps * t * eff, e0 = S.echoesTotal, s0 = S.bestShaft;
+      lastHeld = null;
       gain(g);
       fight(t * eff);
       S.played += t; S.runTime += t;
+      if (kind === 'throttle') { S.buffs.hush = Math.max(0, kept.h - t); S.buffs.teeth = Math.max(0, kept.t - t); }
+      recalc();
       if (g <= 0 && S.echoesTotal === e0) return null;
       return {
-        sec: sec, credited: t, pace: eff, capHours: capH, gloom: g,
-        echoes: S.echoesTotal - e0, bestShaft: S.bestShaft > s0 ? S.bestShaft : 0
+        sec: sec, credited: t, pace: eff, capHours: capH, gloom: g, capped: sec > t,
+        echoes: S.echoesTotal - e0, bestShaft: S.bestShaft > s0 ? S.bestShaft : 0,
+        held: lastHeld ? { n: lastHeld.n, name: lastHeld.name } : null
       };
     }
 
     function mergeAway(a, b) {
       return {
-        sec: a.sec + b.sec, credited: a.credited + b.credited, pace: b.pace, capHours: b.capHours,
-        gloom: a.gloom + b.gloom, echoes: a.echoes + b.echoes, bestShaft: Math.max(a.bestShaft, b.bestShaft)
+        sec: a.sec + b.sec, credited: a.credited + b.credited, pace: b.pace, capHours: b.capHours, capped: a.capped || b.capped,
+        gloom: a.gloom + b.gloom, echoes: a.echoes + b.echoes, bestShaft: Math.max(a.bestShaft, b.bestShaft), held: b.held || a.held
       };
     }
 
@@ -713,7 +1685,7 @@
 
     function tick() {
       if (halted) return { away: null, ending: false };
-      var w = wallNow(), m = monoNow(), rep = null, more;
+      var w = wallNow(), m = monoNow(), rep = null, thr = null, abs = null;
       var dm = Math.max(0, (m - monoLast) / 1000);
       monoLast = m;
       if (w < S.seen - 120000) {
@@ -724,8 +1696,15 @@
         say('The realm\'s clocks disagree. Time away will not count until they settle.');
       }
       var gap = Math.max(0, (w - S.seen) / 1000) - dm;
-      if (dm > 90) rep = away(dm); else step(dm);
-      if (gap > 60) { more = away(gap); rep = rep && more ? mergeAway(rep, more) : (rep || more); }
+      if (dm > 90) thr = away(dm, 'throttle'); else step(dm);
+      if (gap > 60) abs = away(gap, 'absence');
+      // A report is for an absence of five minutes or more. A throttled tab and shorter gaps are credited
+      // with one Whisper, so nothing interrupts the player who is here.
+      if (abs && abs.sec >= 300) rep = thr ? mergeAway(thr, abs) : abs;
+      else {
+        var q = thr && abs ? mergeAway(thr, abs) : (thr || abs);
+        if (q) say('The realm kept working. ' + fmtTime(q.sec) + '.');
+      }
       S.seen = Math.max(S.seen, w);
       slowTimer += dm; saveTimer += dm;
       if (slowTimer >= 0.5) { slowTimer = 0; slowChecks(); }
@@ -741,19 +1720,40 @@
       if (!u.shafts && (cnt('weaver') >= 1 || S.totalGloom >= 2000)) {
         u.shafts = true;
         say('Light. Something above has cut a shaft through the roof of the realm.');
+        emit('unlock', { what: 'Sunshafts', go: { dest: 'host', page: 'shaft' } });
       }
-      if (!u.rites && S.echoesTotal >= 1) { u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.'); }
+      if (!u.soundings && cnt('tide') >= 1) { u.soundings = true; say('The Tidewells go down further than their ropes.'); emit('unlock', { what: 'Soundings', go: { dest: 'host', page: 'soundings' } }); }
+      if (!u.vows && S.unlightings >= 3) u.vows = true;
+      if (!u.pane && S.glassTotal >= 1) u.pane = true;
+      if (!u.rites && S.echoesTotal >= 1) {
+        u.rites = true; say('The first Echo comes home. The Cantors know rites that feed on these.');
+        emit('unlock', { what: 'Rites', go: { dest: 'host', page: 'rite' } });
+      }
       if (!u.unlight && (S.runGloom >= 1e7 || S.unlightings > 0)) {
         u.unlight = true; say('The realm is growing heavy. The oldest page of the Ledger describes what to do about that.');
+        emit('unlock', { what: 'The Unlighting', go: { dest: 'deep', page: 'unl' } });
       }
 
       // After a failed Lampwarden the Host returns on its own once it can win.
-      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < BOSS_TIME * 0.8) {
+      if (S.regroup && shaftMaxHp(S.shaftTop) / C.might < bossMax() * (perk('chamberlain') ? D.AUTO.chamberlainWin : 0.8)) {
         S.regroup = false; S.autoAdvance = true;
         placeShaft(S.shaftTop);
         say('The Host has grown heavier. It climbs again.');
       }
 
+      // The Usher and the Precentor work while the player is on the seat, and never spend more than their share of the pool.
+      if (perk('usher')) {
+        D.DENIZENS.forEach(function (d) {
+          if (S.auto.den[d.id] && !(S.vow === 'few' && cnt(d.id) >= 50) && denCost(d, cnt(d.id), 1) <= D.AUTO.denShare * S.gloom && S.gloom >= denCost(d, cnt(d.id), 1)) {
+            S.gloom -= denCost(d, cnt(d.id), 1); S.den[d.id] = cnt(d.id) + 1; recalc();
+          }
+        });
+      }
+      if (perk('precentor') && S.unlocked.rites) {
+        D.RITES.forEach(function (r) {
+          if (S.vow !== 'silence' && S.auto.rite[r.id] && !(r.max && rl(r.id) >= r.max) && riteCost(r) <= D.AUTO.riteShare * S.echoes) buyRite(r.id);
+        });
+      }
       if (perk('steward')) {
         var bought = false;
         for (var i = 0; i < UPGS.length; i++) {
@@ -763,47 +1763,263 @@
         if (bought) recalc();
       }
 
+      samplePeak();
       OMENS.forEach(function (o) {
-        if (!S.omens[o.id] && o.cond()) { S.omens[o.id] = 1; say('Omen: ' + o.name + '.'); dirty.omens = true; }
+        if (!S.omens[o.id] && o.cond()) { S.omens[o.id] = 1; say('Omen: ' + o.name + '.'); dirty.omens = true; emit('omen', { id: o.id, name: o.name }); }
       });
 
       var f = {
         total: S.totalGloom, denizens: totalDenizens(), den: {}, lanterns: S.lanterns, shaftsOpen: u.shafts,
-        echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal
+        echoesTotal: S.echoesTotal, best: S.bestShaft, unlightOpen: u.unlight, unlightings: S.unlightings, glassTotal: S.glassTotal,
+        // Later systems fill these in. Until they exist they are zero, so their pages cannot unlock.
+        skyOpen: skyOn() ? 1 : 0, sky: { moonless: S.sky.seen.moonless, lidless: S.sky.seen.lidless, longestnight: S.sky.seen.longestnight,
+          longestday: S.sky.seen.longestday, balance: S.sky.seen.balance, eclipse: eclipseCount() },
+        petitions: S.pet.count, vigils: S.pet.count, offer: !!petitionOffer(), slack: slackLines() > 0, litanies: S.litanyUses, soundings: S.snd.done,
+        sets: { table: setDone('table'), survey: setDone('survey'), loft: setDone('loft'), lamp: setDone('lamp'), queen: setDone('queen'), bed: setDone('bed') },
+        paneLit: paneCount(S), end: S.pane.choice === 'returned' ? 2 : S.pane.choice === 'kept' ? 3 : (S.ended ? 1 : 0), currents: S.currentChoices, vowsOpen: S.unlightings >= 3 ? 1 : 0, elderBell: cnt('bell')
       };
       D.DENIZENS.forEach(function (d) { f.den[d.id] = cnt(d.id); });
       D.CODEX.forEach(function (c) {
-        if (!S.codex[c.id] && c.when(f)) {
-          S.codex[c.id] = 1; dirty.codex = true;
-          if (S.tab !== 'codex') S.codexUnread++;
-          if (c.id !== 'waking') say('Codex: ' + c.title + '.');
+        if (!S.codex[c.id] && D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0 && c.when(f)) {
+          S.codexSeq++; S.codex[c.id] = S.codexSeq; S.codexNew[c.id] = 1; dirty.codex = true;
+          if (c.id !== 'waking') { say('Codex: ' + c.title + '.'); emit('codex', { id: c.id, title: c.title }); }
         }
       });
+    }
+
+    /* ---------- the codex ---------- */
+    function codexUnread() { var n = 0; for (var k in S.codexNew) n++; return n; }
+    function markCodexRead(id) { delete S.codexNew[id]; }
+    function markAllCodexRead() { S.codexNew = {}; }
+    /* Pages in live systems only: the ones the player could know about. */
+    function codexLive() { return D.CODEX.filter(function (c) { return D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0; }); }
+
+    /* ---------- the Unlighting advisor ---------- */
+    function rateNow() { return S.runTime >= 300 ? glassGain() / (S.runTime / 3600) : 0; }
+    /* Called from slowChecks: remember the best Nightglass per hour this fathom has shown. */
+    function samplePeak() {
+      if (S.runTime < 300 || glassGain() < 1) return;
+      var r = rateNow();
+      if (r > S.peak.rate) { S.peak.rate = r; S.peak.at = S.runTime; }
+    }
+    /* One sentence on whether now is a good time to let go, and which state it is. */
+    function advisor() {
+      var g = glassGain(), out;
+      if (g < 1) return { state: 'not', text: 'The realm is not yet heavy enough.' };
+      var r = rateNow(), p = Math.max(S.peak.rate, r), q = p > 0 ? r / p : 1, text;
+      if (q >= 0.9) out = { state: 'quick', text: 'The realm is still gaining weight quickly.' };
+      else if (q >= 0.6) out = { state: 'slowing', text: 'The gain is slowing. Letting go soon is reasonable.' };
+      else out = { state: 'suggest', text: 'The gain has slowed. The Ledger suggests letting go.' };
+      text = out.text;
+      if (skyOn() && moonEvent(wallNow()) === 'moonless') text += ' No moon tonight. The glass will be thicker.';
+      if (S.vow) text += ' The vow is not yet kept.';
+      out.text = text;
+      return out;
+    }
+    /* Five plain lines about the realm, for the card and for copying. No save data. */
+    function realmSummary() {
+      var n = 0, k; for (k in S.omens) n++;
+      var lines = ['The Dark Realm', (S.pane.choice ? D.PANE.endings[S.pane.choice].title : 'Regent of Vesperdeep' + (S.ended ? ', who carried the First Lamp down' : '')),
+        'Fathom ' + (S.unlightings + 1) + ', deepest Sunshaft sealed ' + S.bestShaft,
+        fmt(S.glassTotal) + ' Nightglass earned, ' + n + ' omens' + (S.pet.count ? ', ' + S.pet.count + ' Vigils kept' : ''),
+        fmtTime(S.played) + ' on the seat'];
+      return lines;
+    }
+
+    /* ---------- the Pane ----------
+       A light is lit when what justifies it is true. They are never stored as earned, so they cannot be forged on their own. */
+    function paneLights(s) {
+      var held = {}, k, ledger = true, signs = true;
+      D.CODEX.forEach(function (c) { if (c.sys !== 'ending' && D.LIVE_SYSTEMS.indexOf(c.sys || 'core') >= 0 && !s.codex[c.id]) ledger = false; });
+      OMENS.forEach(function (o) { if (o.name !== 'Hers' && o.name !== 'Yours' && !s.omens[o.id]) signs = false; });
+      function done(setId) { var all = D.RELICS.filter(function (r) { return r.set === setId; }); return all.every(function (r) { return s.relics[r.id]; }); }
+      function omenNamed(n) { for (var i = 0; i < OMENS.length; i++) if (OMENS[i].name === n) return !!s.omens[OMENS[i].id]; return false; }
+      return D.PANE.lights.map(function (l) {
+        switch (l.kind) {
+          case 'glass': return s.glassTotal >= 1;
+          case 'shaft': return s.bestShaft >= 150;
+          case 'fathoms': return s.unlightings >= 10;
+          case 'perks': return D.PERKS.every(function (p) { return s.perks[p.id]; });
+          case 'lanterns': return s.lanterns >= 100;
+          case 'denizens': return omenNamed('A Nation Below') && omenNamed('A World Below');
+          case 'keeping': return !!s.keepings[l.key];
+          case 'shelf': return done(l.key);
+          case 'moonless': return !!s.sky.seen.moonless;
+          case 'longestnight': return !!s.sky.seen.longestnight;
+          case 'eclipse': for (k in s.sky.eclipses) return true; return false;
+          case 'vigils': return s.pet.count >= 30;
+          case 'ledger': return ledger;
+          case 'signs': return signs;
+        }
+        return false;
+      });
+    }
+    function paneCount(s) { var n = 0; paneLights(s).forEach(function (b) { if (b) n++; }); return n; }
+    /* What the page shows for a light's progress, where it can be counted. */
+    function paneProgress(l) {
+      switch (l.kind) {
+        case 'fathoms': return [S.unlightings, 10];
+        case 'lanterns': return [S.lanterns, 100];
+        case 'denizens': return [totalDenizens(), 2000];
+        case 'vigils': return [S.pet.count, 30];
+        case 'shaft': return [S.bestShaft, 150];
+        case 'shelf': return [D.RELICS.filter(function (r) { return r.set === l.key && S.relics[r.id]; }).length, 4];
+        case 'perks': return [D.PERKS.filter(function (p) { return S.perks[p.id]; }).length, D.PERKS.length];
+      }
+      return null;
+    }
+    function chooseEnding(choice, trusted) {
+      if (trusted !== true || S.pane.choice || (choice !== 'returned' && choice !== 'kept') || paneCount(S) !== D.PANE.lights.length) return false;
+      S.pane.choice = choice;
+      say(choice === 'returned' ? 'You stood up. It was easier than you expected.' : 'You stayed where you were.');
+      afterChange();
+      return true;
+    }
+    function markPaneSeen() { paneLights(S).forEach(function (on, i) { if (on) S.pane.seen[D.PANE.lights[i].id] = 1; }); }
+    function paneUnseen() { var n = 0; paneLights(S).forEach(function (on, i) { if (on && !S.pane.seen[D.PANE.lights[i].id]) n++; }); return n; }
+
+    /* ---------- the Night Report ---------- */
+
+    /* What is waiting for the player on return. Each provider gives { id, text, go } or null.
+       Later systems append here (offers, a slack line, the sky). */
+    var WAITING = [
+      function () {
+        var n = availableUpgs().filter(function (u) { return S.gloom >= u.cost; }).length;
+        return n ? { id: 'working', text: n + (n === 1 ? ' working can be completed.' : ' workings can be completed.'), go: { dest: 'realm', page: 'work' } } : null;
+      },
+      function () { return slackLines() ? { id: 'slack', text: 'The line is slack.', go: { dest: 'host', page: 'soundings' } } : null; },
+      function () { return petitionOffer() ? { id: 'offer', text: 'The denizens have intentions.', go: { dest: 'seat', page: 'seat' } } : null; },
+      function () { return facts().unlight ? { id: 'unlight', text: 'The realm is heavy enough to let go.', go: { dest: 'deep', page: 'unl' } } : null; }
+    ];
+    function waiting() {
+      var out = [];
+      WAITING.forEach(function (fn) { var w = fn(); if (w) out.push(w); });
+      return out;
+    }
+    /* When the realm stops working if the player leaves at nowMs. */
+    function returnAt(nowMs) { return nowMs + awayCapHours() * 3600000; }
+
+    /* ---------- what to do next ---------- */
+
+    /* The facts the Seat's objective strip chooses from. Pure reads of the state. */
+    function facts() {
+      var f = { denizens: totalDenizens(), offer: !!petitionOffer(), slack: slackLines() > 0, work: null, boss: null, unlight: false, nextDen: null, rite: false, omen: null }, i;
+      var ups = availableUpgs();
+      for (i = 0; i < ups.length; i++) if (S.gloom >= ups[i].cost) { f.work = ups[i].name; break; }
+      if (S.unlocked.shafts && S.shaftTop % 10 === 0) {
+        var need = shaftMaxHp(S.shaftTop) / C.might / bossMax();
+        if (need > 1) f.boss = { mult: need, name: shaftName(S.shaftTop) };
+      }
+      f.unlight = S.unlocked.unlight && S.unlightings === 0 && glassGain() >= 1;
+      for (i = 0; i < D.DENIZENS.length; i++) {
+        var d = D.DENIZENS[i];
+        if (cnt(d.id) > 0) continue;
+        if (!denLive(d)) break;
+        var cost = denCost(d, 0, 1), eta = S.gloom >= cost ? 0 : (C.gps > 0 ? (cost - S.gloom) / C.gps : -1);
+        if (eta >= 0 && eta <= 600) f.nextDen = { name: d.name, when: eta === 0 ? 'reach' : fmtTime(eta) };
+        break;
+      }
+      if (S.unlocked.rites) {
+        for (i = 0; i < D.RITES.length; i++) {
+          var r = D.RITES[i];
+          if (S.echoes >= riteCost(r) && !(r.max && rl(r.id) >= r.max)) { f.rite = true; break; }
+        }
+      }
+      var best = 0;
+      OMENS.forEach(function (o) {
+        if (S.omens[o.id]) return;
+        var q = o.prog();
+        if (q >= 0.75 && q < 1 && q > best) { best = q; f.omen = { name: o.name, ratio: q }; }
+      });
+      return f;
+    }
+
+    /* { id, text, go } for the first applicable objective. */
+    function objective() {
+      var f = facts();
+      for (var i = 0; i < D.OBJECTIVES.length; i++) {
+        var o = D.OBJECTIVES[i];
+        if (o.when(f)) return { id: o.id, text: o.text(f), go: o.go };
+      }
+      return { id: 'quiet', text: 'The realm is quiet.', go: null };
+    }
+
+    /* "in 3m 20s" for how long until have reaches cost at income per second. Empty when it cannot be said. */
+    function eta(have, cost, income) {
+      if (have >= cost || !(income > 0)) return '';
+      var sec = (cost - have) / income;
+      return sec > 86400 ? 'over a day' : 'in ' + fmtTime(sec);
+    }
+
+    /* A rolling rate over the last windowSec seconds of samples (total, time in seconds). */
+    function rateMeter(windowSec) {
+      var s = [];
+      return {
+        sample: function (total, t) { s.push([t, total]); while (s.length > 1 && t - s[0][0] > windowSec) s.shift(); },
+        rate: function () {
+          if (s.length < 2) return 0;
+          var a = s[0], b = s[s.length - 1], dt = b[0] - a[0];
+          return dt > 0 ? Math.max(0, (b[1] - a[1]) / dt) : 0;
+        },
+        reset: function () { s = []; }
+      };
+    }
+
+    /* The factors that make up a channel right now, by source, for the "Why" popover. */
+    var SOURCE_LABELS = { pane: 'The Pane', keepings: 'Keepings', vow: 'A vow', current: 'This fathom\'s current', relics: 'Relics', vigil: 'The Vigil', petitionRest: 'A petition', eclipses: 'Eclipses witnessed', litanies: 'A Litany', sky: 'The sky and today\'s petition', nightglass: 'Nightglass', omens: 'Omens', rites: 'Rites', workings: 'Workings', perks: 'Nightglass perks', lanternBuffs: 'Lantern boon' };
+    function breakdown(channel) {
+      var out = [], add = ADD.indexOf(channel) >= 0, ctx = { present: true, wall: wallNow() };
+      SOURCES.forEach(function (src) {
+        var r = src.fn(S, ctx);
+        if (!r || r[channel] === undefined) return;
+        if (add ? r[channel] !== 0 : Math.abs(r[channel] - 1) > 1e-9) out.push({ name: SOURCE_LABELS[src.name] || src.name, value: r[channel] });
+      });
+      return out;
     }
 
     /* ---------- the engine ---------- */
 
     var engine = {
-      KEY: KEY, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, MARCH: MARCH,
+      KEY: KEY, MAX_SAVE: MAX_SAVE, BOSS_TIME: BOSS_TIME, GLASS_EXP: GLASS_EXP, FINAL_SHAFT: FINAL_SHAFT, DEEP_SHAFT: DEEP_SHAFT, denLive: denLive, MARCH: MARCH,
       C: C, UPGS: UPGS, OMENS: OMENS, dirty: dirty,
       // time
       start: start, tick: tick, step: step, away: away, slowChecks: slowChecks, recalc: recalc, fight: fight,
       // actions
       buyDenizen: buyDenizen, buyUpg: buyUpg, buyRite: buyRite, buyPerk: buyPerk, unlight: unlight,
-      setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
+      lanternPath: lanternPath, lanternKind: lanternKind, setShaft: setShaft, setAutoAdvance: setAutoAdvance, gather: gather, snuffLantern: snuffLantern,
       // save
       load: load, save: save, exportText: exportText, importText: importText, erase: erase,
-      halt: function () { halted = true; },
+      listBackups: listBackups, restoreBackup: restoreBackup, listSetAside: listSetAside, discardSetAside: discardSetAside,
+      backupStale: backupStale, reminderDue: reminderDue, markExported: markExported, markReminded: markReminded,
+      halt: function () { halted = true; }, storageAction: storageAction,
       // reads
       cnt: cnt, rl: rl, perk: perk, totalDenizens: totalDenizens, totalRites: totalRites,
       denCost: denCost, maxBuy: maxBuy, riteCost: riteCost, shaftMaxHp: shaftMaxHp, shaftReward: shaftReward,
-      shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours,
+      shaftName: shaftName, glassGain: glassGain, awayPace: awayPace, awayCapHours: awayCapHours, bossMax: bossMax,
       availableUpgs: availableUpgs, fmt: fmt, fmtTime: fmtTime,
+      // modifiers and seeded randomness
+      speakLitany: speakLitany, litanyCooldown: litanyCooldown,
+      riteCostN: riteCostN, maxRite: maxRite,
+      lowerLine: lowerLine, drawUp: drawUp, depthOpen: depthOpen, lowerCost: lowerCost, setDone: setDone, setRelics: setRelics, relicCount: relicCount, maxLines: maxLines, slackLines: slackLines,
+      paneLights: function () { return paneLights(S); }, paneCount: function () { return paneCount(S); }, paneProgress: paneProgress, chooseEnding: chooseEnding, markPaneSeen: markPaneSeen, paneUnseen: paneUnseen,
+      advisor: advisor, rateNow: rateNow, realmSummary: realmSummary,
+      vowDef: vowDef, setDownVow: setDownVow,
+      currentOffer: currentOffer, currentDef: currentDef,
+      petitionOffer: petitionOffer, grantPetition: grantPetition, petitionEffect: function () { return petitionEffect(S, wallNow()); }, dayIndex: dayIndex, vigilMilestone: vigilMilestone,
+      phaseAt: phaseAt, skyInfo: skyInfo, moonPhase: moonPhase, moonName: moonName, moonEvent: moonEvent, datedEvents: datedEvents,
+      skyEffects: skyEffects, nextEvents: nextEvents, almanac: almanac, eclipseCount: eclipseCount,
+      addSource: addSource, mods: mods, breakdown: breakdown, pickChatter: pickChatter, parseLog: parseLog, LOG_KEY: 'thedarkrealm.log.v1',
+      codexUnread: codexUnread, markCodexRead: markCodexRead, markAllCodexRead: markAllCodexRead, codexLive: codexLive,
+      waiting: waiting, returnAt: returnAt, mergeAway: mergeAway,
+      facts: facts, objective: objective, eta: eta, rateMeter: rateMeter, drainEvents: drainEvents,
+      rng: rng,
+      pick: pick, shuffle: shuffle, weighted: weighted,
       // internals the tests exercise
       fresh: fresh, adopt: adopt, audit: audit, seal: seal, pack: pack, unpack: unpack
     };
     Object.defineProperty(engine, 'S', { get: function () { return S; } });
-    Object.defineProperty(engine, 'lantern', { get: function () { return lantern; } });
+    Object.defineProperty(engine, 'lantern', { get: function () { for (var i = 0; i < lanterns.length; i++) if (lanterns[i].wait <= 0) return lanterns[i]; return null; } });
+    Object.defineProperty(engine, 'lanterns', { get: function () { return lanterns; } });
     Object.defineProperty(engine, 'halted', { get: function () { return halted; } });
     return engine;
   }

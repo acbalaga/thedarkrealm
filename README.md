@@ -18,7 +18,11 @@ Installing as an app needs the game served over https (a browser rule, not a gam
 
 After the first visit the service worker has every file cached, so the installed app launches and plays with no connection. It opens full screen, respects the notch and home-indicator areas, and saves when it is sent to the background. An installed app keeps its own save, separate from the browser tab, so use Realm > Export save to carry progress across.
 
-Updates load in the background and apply on the next launch. Bump `CACHE` in `public/sw.js` when shipping changes.
+### Keeping the save
+
+The save is one entry in the browser's storage, and browsers clear unused sites. The Realm tab, under Keeping, can copy the save as text or download it as a file, and import either one. It also keeps three sealed backups: the last save of the previous day, the realm just before an Unlighting, and the realm just before an import, restore or erase. Restore puts one back and keeps what it replaced, so a mistaken import can be undone. Copies set aside because they failed their seal can be exported or discarded but are never played. After two hours of play in a browser tab with no export in 14 days, one Whisper suggests exporting (at most once a week).
+
+A new version downloads in full in the background and waits, so one launch never mixes old and new files. The Realm tab then offers Apply update (it saves first and reloads). If you ignore it, the new version starts on the next cold launch. The version shown at the bottom of the Realm tab is a hash of the shipped files. Run `npm run stamp` after changing anything under `public/`; `npm run check` fails if it is stale, and `npm run deploy` stamps first.
 
 ## Deploy to Cloudflare Workers
 
@@ -36,10 +40,16 @@ Wrangler prints the live URL (`https://thedarkrealm.<your-subdomain>.workers.dev
 
 Or deploy on every push: in the Cloudflare dashboard go to Workers & Pages, Create, Import a repository, and pick this repo. The defaults work (deploy command `npx wrangler deploy`), because `wrangler.jsonc` carries the settings.
 
+### Deploying safely
+
+- In the Cloudflare dashboard build settings, build with `npm ci` and deploy with `npx wrangler deploy`.
+- If deployment ever moves to GitHub Actions, use a Cloudflare API token scoped to Workers Scripts edit on this single account, stored as an Actions secret, in a separate workflow that runs only on the default branch after CI passes. No such workflow exists yet.
+- CI (`.github/workflows/ci.yml`) runs `npm test`, `npm run check` and `npm audit --audit-level=high` with read-only permissions and no secrets. `wrangler` is pinned to an exact version.
+
 | File | Purpose |
 | --- | --- |
 | `wrangler.jsonc` | Worker name, compatibility date, assets folder, 404 handling |
-| `public/_headers` | Security headers: CSP (with `frame-ancestors`), `nosniff`, no framing, no referrer, and `no-cache` on the service worker |
+| `public/_headers` | Security headers: CSP (with `frame-ancestors`), `nosniff`, no framing, no referrer, HSTS, cross-origin isolation headers, a narrowed Permissions-Policy, and `no-cache` on the service worker |
 | `public/404.html` | Not-found page |
 | `package.json` | Pins Wrangler and provides `dev` and `deploy` scripts. The game itself has no dependencies. |
 
@@ -67,10 +77,14 @@ There are no purchases, accounts or leaderboards, and no server. Everything runs
 | --- | --- |
 | Console access to game state or tables | State lives in a closure. No globals. Data tables are frozen and removed from `window`. |
 | Editing the save in localStorage or an export | Saves carry a keyed checksum. A save that fails it is refused on import and set aside on load (kept under `thedarkrealm.save.v2.rejected`, never deleted). |
-| Forging a save with a valid checksum | Every load is audited against the game's own bookkeeping: denizens, workings and rites must be affordable from Gloom and Echoes actually earned, Nightglass must come from Unlightings, perks from Nightglass, and lifetime totals must be reachable in the time played. Impossible values are removed and the Realm tab records an irregularity. |
+| Forging a save with a valid checksum | Every load is audited against the game's own bookkeeping: denizens, workings and rites must be affordable from Gloom and Echoes actually earned this fathom (Rites carried in by Rites Remembered are tracked separately), Nightglass must come from Unlightings, perks from Nightglass, and lifetime totals must be reachable in the time played. Impossible values are removed and the Realm tab records an irregularity. |
 | Scripted clicking | The Stillwell and Stray Lanterns only accept real input events, at most 14 gathers a second. |
 | Changing the device clock | Running time uses the monotonic clock, so the system clock cannot speed play. Time away is capped (8h, 24h with a perk) and paid at the away pace. Winding the clock back forfeits an equal amount of future away time. |
-| Two tabs on one save | The older tab stops and says so. |
+| Two tabs on one save | The older tab stops and says so, also when the other window erases the realm. |
+| Holding a key on the Stillwell or a Lantern | Only a fresh press of Enter or Space acts. Key repeat is ignored. |
+| The old unsealed v1 save | Read once, size-limited, marked as irregular, and rewritten as a sealed save at once. It is no longer read after 30 June 2027. |
+| Restoring an edited backup | Backups are sealed strings and go through the same seal check and audit as any save. An altered one is not listed or restorable. |
+| Setting the device clock to a favourable hour (Surface Clock) | Accepted. Each phase of the day is a bonus of similar size on a different channel, so no hour is worth faking for long, and winding the clock back triggers the existing debt rule. Sky bonuses apply only while the game is open, never to time away. Nothing reads a location or makes a request. |
 | Re-enabling a disabled button | Every purchase re-checks cost and unlock conditions in code. |
 
 Known limit: winding the device clock forward and leaving it there still earns one capped away credit per jump. With no server there is no trusted clock to compare against.
@@ -79,7 +93,7 @@ Known limit: winding the device clock forward and leaving it there still earns o
 
 - A Content-Security-Policy allows scripts, styles and images from the game's own folder only. No inline script, no `eval`, no remote hosts, no forms. It is set in the page itself, and again as a response header on Cloudflare, where it also forbids embedding the game in another site.
 - Imported saves are size-limited, format-checked, and copied field by field against a fixed schema. Nothing is merged, so crafted keys such as `__proto__` are never touched.
-- All dynamic text is written with `textContent`. The few HTML strings are built from fixed text and formatted numbers.
+- All dynamic text is written with `textContent` or text nodes. The game never parses a string as HTML, and Trusted Types (`require-trusted-types-for 'script'`) makes the browser refuse it if a future change tries. The only policy, `tdr`, allows one fixed service worker URL.
 - The service worker handles same-origin GET requests only and stores only complete, successful, same-origin responses.
 - No network requests, analytics, cookies or third-party code.
 

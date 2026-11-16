@@ -40,6 +40,9 @@ function fakeEnv(opts) {
     wallNow: () => clock.wall,
     monoNow: () => clock.mono,
     random: seeded(opts.seed || 1),
+    hidden: () => !!clock.hidden,
+    prefersReducedMotion: () => !!opts.reducedMotion,
+    sky: !!opts.sky,                       // the Surface Clock is off in tests unless one asks for it
     say: (m) => said.push(m),
     storage: {
       get: (k) => (map.has(k) ? map.get(k) : null),

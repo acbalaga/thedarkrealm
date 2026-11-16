@@ -87,3 +87,14 @@ const { chromium } = require('playwright');
 ```
 
 The strings were checked three ways when `core.js` landed: each unpacks, seals and adopts with zero audit fixes (`tests/save.test.js`); each loads in the real page with the Ledger reading "In order"; and the same bot, replayed against `core.js`, reproduced the mid, two-Unlightings and post-ending states field for field.
+
+## Derived values before TDR-004
+
+`before-tdr004.json` holds `C.gps`, `C.click`, `C.might` and `C.echoMult` for each fixture, measured on `core.js` as it stood before the modifier registry replaced the inline bonuses (commit `a0a7149` plus the simulator). `tests/mods.test.js` requires the registry to reproduce them to 12 significant figures. Do not regenerate this file to make a test pass. A change that moves these numbers on purpose is a balance change and needs its own ticket.
+
+| Fixture | gps | click | might | echoMult |
+| --- | --- | --- | --- | --- |
+| fresh | 0 | 1 | 1 | 1 |
+| mid-first-fathom | 5.356 | 2.06 | 38.4 | 1 |
+| two-unlightings-perks | 8.814 | 1.356 | 74.4 | 1 |
+| post-ending | 1.9023886278108774e18 | 1.542754280710019e17 | 6.119634871946212e14 | 378.56795512758055 |

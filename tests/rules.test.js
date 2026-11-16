@@ -34,6 +34,7 @@ test('denCost of one follows the stated growth, and thrift takes a tenth off', (
   assert.equal(e.denCost(d, 0, 1), Math.ceil(d.cost));
   assert.equal(e.denCost(d, 10, 1), Math.ceil(d.cost * Math.pow(1.15, 10)));
   e.S.perks.thrift = 1;
+  e.recalc();
   assert.equal(e.denCost(d, 0, 1), Math.ceil(d.cost * 0.9));
 });
 
@@ -81,17 +82,17 @@ test('recalc applies Nightglass, omens, rites, perks and buffs', () => {
   e.S.perks = { deep: 1, queen: 1, keen: 1, halls: 1 };
   e.S.upg = { hand0: 1 };
   e.recalc();
-  const common = 1.1;
-  const perm = common * 1.02 * Math.pow(1.12, 3) * 2 * 5;
-  close(e.C.permMult, perm, 'permMult');
+  const common = 1.1, pane = 1.03;                       // the Pane's first light is lit by any Nightglass
+  const perm = common * 1.02 * Math.pow(1.12, 3) * 2 * 5 * pane;
+  close(e.C.gMult, perm, 'gloom multiplier');
   close(e.C.denGps, 4 * g.rate * perm, 'denGps');
   close(e.C.click, 2 * Math.pow(1.5, 2) * perm, 'click');
-  close(e.C.might, (1 + 4) * common * Math.pow(1.2, 2) * 2 * 5, 'might');
-  close(e.C.echoMult, Math.pow(1.15, 2) * 2 * 5, 'echoMult');
+  close(e.C.might, (1 + 4) * common * Math.pow(1.2, 2) * 2 * 5 * pane, 'might');
+  close(e.C.echoMult, Math.pow(1.15, 2) * 2 * 5 * pane, 'echoMult');
   e.S.buffs.hush = 10; e.S.buffs.teeth = 10;
   e.recalc();
   close(e.C.denGps, 4 * g.rate * perm * 5, 'hush');
-  close(e.C.might, (1 + 4) * common * Math.pow(1.2, 2) * 2 * 5 * 5, 'teeth');
+  close(e.C.might, (1 + 4) * common * Math.pow(1.2, 2) * 2 * 5 * 5 * pane, 'teeth');
 });
 
 test('fight seals the expected number of shafts for a fixed Might and dt', () => {
