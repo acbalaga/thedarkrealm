@@ -67,3 +67,11 @@ test('text tokens reach 4.5:1 on every surface they sit on', () => {
     });
   });
 });
+
+test('the app shell is pinned to the screen edges, not sized by viewport units', () => {
+  const shell = rules(CSS).filter((r) => r.sel.indexOf('body.shell') >= 0 && /position/.test(r.body))[0];
+  assert.ok(shell, 'body.shell rule');
+  assert.match(shell.body, /position:\s*fixed/);
+  assert.match(shell.body, /inset:\s*0/);
+  assert.equal(/\d+(d|s|l)?vh/.test(shell.body), false, 'iOS reports viewport heights short of the real bottom');
+});
